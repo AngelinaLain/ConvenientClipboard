@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 
 class JwtServiceTest {
     private JwtService service(String secret) {
-        return new JwtService(new AppProperties("http://localhost:8088", Path.of("data"), 1024,
+        return new JwtService(new AppProperties("http://localhost:8088", Path.of("data"), 1048576,
                 secret, "admin", "test-password-123", "encryption-key-at-least-32-characters"));
     }
     @Test void issuedTokenHasBoundedLifetimeAndUniqueRevocationIdentity() {

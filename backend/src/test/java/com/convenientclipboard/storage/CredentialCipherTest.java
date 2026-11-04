@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CredentialCipherTest {
-    private CredentialCipher cipher(String key) { return new CredentialCipher(new AppProperties("http://localhost",Path.of("."),1024,"j".repeat(32),"admin","password",key)); }
+    private CredentialCipher cipher(String key) { return new CredentialCipher(new AppProperties("http://localhost",Path.of("."),1048576,"j".repeat(32),"admin","password",key)); }
     @Test void encryptedCredentialsAreRandomizedAndAuthenticated() {
         CredentialCipher cipher=cipher("k".repeat(32));
         String first=cipher.encrypt("secret-access-key"),second=cipher.encrypt("secret-access-key");

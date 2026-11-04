@@ -2,6 +2,8 @@ package com.convenientclipboard.auth;
 
 import com.convenientclipboard.config.AppProperties;
 import com.convenientclipboard.config.SecurityConfig;
+import com.convenientclipboard.storage.SettingsService;
+import com.convenientclipboard.storage.StorageSettings;
 import java.util.Map;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.mockito.Mockito.when;
 
 @WebMvcTest(controllers = {AuthController.class, SecurityContractTest.ProbeController.class})
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, AuthCookies.class, SecurityContractTest.ProbeController.class})
@@ -27,6 +30,7 @@ class SecurityContractTest {
     @MockitoBean StringRedisTemplate redis;
     @MockitoBean RateLimiter limiter;
     @MockitoBean AppProperties properties;
+    @MockitoBean SettingsService settings;
 
     @RestController
     static class ProbeController {
@@ -36,6 +40,12 @@ class SecurityContractTest {
     @Test void anonymousCanGetCsrfToken() throws Exception {
         mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isNotEmpty()).andExpect(jsonPath("$.headerName").value("X-XSRF-TOKEN"));
+    }
+    @Test void publicConfigurationReflectsCurrentDatabaseUploadLimit() throws Exception {
+        when(settings.get()).thenReturn(new StorageSettings(10737418240L,50,1048576L));
+        mvc.perform(get("/api/public/config")).andExpect(status().isOk()).andExpect(jsonPath("$.maxUploadBytes").value(1048576));
+        when(settings.get()).thenReturn(new StorageSettings(10737418240L,50,2097152L));
+        mvc.perform(get("/api/public/config")).andExpect(status().isOk()).andExpect(jsonPath("$.maxUploadBytes").value(2097152));
     }
     @Test void stateChangesRequireCsrfEvenForAnonymousUpload() throws Exception {
         mvc.perform(post("/api/files")).andExpect(status().isForbidden())

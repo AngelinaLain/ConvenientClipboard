@@ -1,14 +1,42 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ArrowRight, Check, CheckCircle2, CloudUpload, Copy, File, Infinity, Link2, LockKeyhole, Plus, Timer, X } from 'lucide-vue-next'
-import { copy, date, session, size, uploadFile } from '../api'
+import { copy, date, refreshPublicConfig, session, size, uploadFile } from '../api'
 import type { FileInfo } from '../types'
+import { formatUploadLimit, validateUploadBatch } from '../uploadPolicy'
 type Item = { id: number; file: File; progress: number; state: 'queued' | 'uploading' | 'done' | 'error'; result?: FileInfo; error?: string }
 const input = ref<HTMLInputElement>(); const dragging = ref(false); const permanent = ref(false); const items = ref<Item[]>([]); const uploading = ref(false); const notice = ref(''); const copied = ref(''); let sequence = 0
 const queued = computed(() => items.value.filter(item => item.state === 'queued' || item.state === 'error'))
-function select(files: FileList | File[] | null) { if (!files) return; for (const file of Array.from(files)) { if (!file.size) { notice.value = `“${file.name}”是空文件，无法上传`; continue }; if (file.size > session.config.maxUploadBytes) { notice.value = `“${file.name}”超过单文件上限 ${size(session.config.maxUploadBytes)}`; continue }; items.value.push({ id: ++sequence, file, progress: 0, state: 'queued' }) }; if (input.value) input.value.value = '' }
+async function select(files: FileList | File[] | null) {
+  if (!files || uploading.value) return
+  const selected = Array.from(files)
+  if (input.value) input.value.value = ''
+  if (!selected.length) return
+  notice.value = ''
+  try { for (const { file, error } of await validateUploadBatch(selected)) { if (error) { notice.value = error; continue }; items.value.push({ id: ++sequence, file, progress: 0, state: 'queued' }) } }
+  catch (e) { notice.value = `无法读取当前上传限制：${(e as Error).message}` }
+}
 function drop(event: DragEvent) { dragging.value = false; select(event.dataTransfer?.files || null) }
-async function start() { uploading.value = true; notice.value = ''; for (const item of [...queued.value]) { item.state = 'uploading'; item.error = ''; try { item.result = await uploadFile(item.file, permanent.value && !!session.user, value => { item.progress = value }); item.state = 'done' } catch (e) { item.state = 'error'; item.error = (e as Error).message } }; uploading.value = false }
+async function start() {
+  if (uploading.value) return
+  const batch = [...queued.value]
+  if (!batch.length) return
+  uploading.value = true; notice.value = ''
+  try {
+    const checked = await validateUploadBatch(batch.map(item => item.file))
+    for (const [index, item] of batch.entries()) {
+      item.error = ''; item.progress = 0
+      if (checked[index]!.error) { item.state = 'error'; item.error = checked[index]!.error!; continue }
+      item.state = 'uploading'
+      try { item.result = await uploadFile(item.file, permanent.value && !!session.user, value => { item.progress = value }); item.state = 'done' }
+      catch (e) { item.state = 'error'; item.error = (e as Error).message }
+    }
+  } catch (e) { notice.value = `无法读取当前上传限制：${(e as Error).message}` }
+  finally { uploading.value = false }
+}
+async function refreshConfig() { try { await refreshPublicConfig() } catch (e) { notice.value = `无法读取当前上传限制：${(e as Error).message}` } }
+onMounted(() => { void refreshConfig(); window.addEventListener('focus', refreshConfig) })
+onUnmounted(() => { window.removeEventListener('focus', refreshConfig) })
 async function copyLink(file: FileInfo) { try { await copy(file.shareUrl); copied.value = file.id; setTimeout(() => { copied.value = '' }, 2200) } catch (e) { notice.value = (e as Error).message } }
 </script>
 <template>
@@ -16,7 +44,7 @@ async function copyLink(file: FileInfo) { try { await copy(file.shareUrl); copie
     <div class="eyebrow"><span class="status-dot"></span>轻量分享，自在流转</div>
     <section class="hero"><h1>文件，即刻分享<span>简单，刚刚好。</span></h1><p>把文件放在这里，让链接替你传递。<br class="mobile-break">无需注册，打开就能用。</p></section>
     <section class="upload-card" aria-label="文件上传">
-      <div class="upload-heading"><span><span class="step-number">01</span>选择你的文件</span><span class="muted">单个文件最大 {{ size(session.config.maxUploadBytes) }}</span></div>
+      <div class="upload-heading"><span><span class="step-number">01</span>选择你的文件</span><span class="muted">单个文件最大 {{ formatUploadLimit(session.config.maxUploadBytes) }}</span></div>
       <input ref="input" type="file" multiple class="visually-hidden" aria-label="选择上传文件" @change="select(($event.target as HTMLInputElement).files)">
       <button class="drop-zone" :class="{ dragging }" :disabled="uploading" @click="input?.click()" @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="drop"><span class="upload-illustration"><CloudUpload :size="36" :stroke-width="1.5" /></span><strong>{{ dragging ? '松手，文件就到这里' : '拖拽文件到这里' }}</strong><span>或<span class="link-color">点击选择文件<ArrowRight :size="14" /></span></span><small>支持任意类型文件，可一次选择多个</small></button>
       <div class="retention-row"><div class="retention-info"><Timer :size="18" /><span>默认保存 <strong>{{ session.config.retentionDays }} 天</strong><small>到期后自动删除，分享链接同时失效</small></span></div><label v-if="session.user" class="switch-label"><input v-model="permanent" type="checkbox" :disabled="uploading"><span class="switch"></span>永久保存</label><RouterLink v-else to="/login" class="text-link">登录可永久保存<ArrowRight :size="14" /></RouterLink></div>

@@ -19,8 +19,6 @@ spring:
       timeout: 3s
   servlet:
     multipart:
-      max-file-size: ${APP_MAX_UPLOAD_BYTES:1073741824}B
-      max-request-size: ${APP_MAX_REQUEST_BYTES:1074790400}B
       file-size-threshold: 0B
       location: ${APP_UPLOAD_TEMP_PATH:${java.io.tmpdir}}
   flyway:

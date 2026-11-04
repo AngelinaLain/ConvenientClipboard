@@ -75,3 +75,23 @@ node scripts/admin-mounted-smoke.mjs
 浏览器连续四次切换临时/永久保存，无刷新且无报错；另外检查了用户管理、全站文件列表及NFS/SMB配置表单。真实NAS的协议连接未测试，因为未提供服务器地址与凭据；当前验证覆盖挂载文件系统适配器，生产挂载按 [配置说明](storage-mounts.md) 完成。
 
 现有部署已通过V2/V3升级与四个服务的健康检查；升级前后原有文件的SHA-256核对一致。隔离测试容器及其专用数据卷在验证后清理，生产数据卷保留。
+
+## 动态上传上限回归
+
+在同一独立QA环境运行，脚本要求没有文件且没有启用的远端存储器。它创建自己的上传对象，结束时删除对象并恢复原设置，不创建额外用户：
+
+```sh
+node scripts/upload-limit-smoke.mjs
+```
+
+验证管理员权限、配置与公开接口即时一致、精确文件边界、增加/降低上限无需重启、chunked超限拒绝、拒绝后不产生对象或元数据、降限后旧文件仍可下载、非法配置拒绝，以及旧版PUT省略新字段时保留设置。
+
+可选的真实大文件验证会生成并传输1GiB+1字节的文件，再流式下载并校验SHA-256，不在客户端整体分配大文件内存。QA服务器需为multipart临时文件和本地对象预留至少约3GiB可用空间：
+
+```sh
+SMOKE_LARGE_UPLOAD=1 node scripts/upload-limit-smoke.mjs
+```
+
+Windows PowerShell：`$env:SMOKE_LARGE_UPLOAD='1'; node scripts/upload-limit-smoke.mjs`。此项走内置Nginx、真实Servlet解析器、本地卷及数据库，能够发现旧1GiB代理/解析器上限未更新的问题。后端另有真实嵌入式Tomcat测试，专门验证动态multipart解析、请求大小与chunked边界，而非只用MockMultipartFile绕过解析。
+
+2026-11-05 实际验证：后端50项测试中49项通过、1项Windows符号链接用例按平台跳过；包含7项真实Tomcat HTTP用例。前端28项测试及TypeScript/生产构建通过。独立QA环境完成上述6组HTTP检查，包含真实1GiB+1字节上传和下载哈希校验；将后台保存为1GiB后，用2MiB的环境初始值重建backend，公开接口及数据库仍为1GiB。NFS/SMB、用户管理、CSRF与保存期限的原6组集成回归也通过。

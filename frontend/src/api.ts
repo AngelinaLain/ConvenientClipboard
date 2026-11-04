@@ -1,10 +1,12 @@
 import { reactive } from 'vue'
-import type { User, PublicConfig } from './types'
+import type { User, PublicConfig, Settings } from './types'
 export const session = reactive<{ user: User | null; ready: boolean; config: PublicConfig }>({ user: null, ready: false, config: { retentionDays: 7, maxUploadBytes: 1073741824, registrationEnabled: true } })
 type CsrfToken = { token: string; headerName: string }
 let csrfInFlight: Promise<CsrfToken> | null = null
 let csrfGeneration = 0
 let startup: Promise<void> | null = null
+let publicConfigInFlight: Promise<PublicConfig> | null = null
+let publicConfigRevision = 0
 export class ApiError extends Error { constructor(message: string, public status: number, public code?: string) { super(message) } }
 export function csrfToken(): Promise<CsrfToken> {
   if (csrfInFlight) return csrfInFlight
@@ -40,10 +42,30 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   }
   return options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase()) ? withCsrf(request) : request()
 }
+export function applyUploadLimit(maxUploadBytes: number) {
+  publicConfigRevision++
+  session.config = { ...session.config, maxUploadBytes }
+}
+export function refreshPublicConfig(): Promise<PublicConfig> {
+  if (publicConfigInFlight) return publicConfigInFlight
+  const revision = publicConfigRevision
+  const request = api<PublicConfig>('/public/config').then(config => {
+    // A completed admin save must not be overwritten by an older pending read.
+    if (revision === publicConfigRevision) session.config = config
+    return session.config
+  }).finally(() => { if (publicConfigInFlight === request) publicConfigInFlight = null })
+  publicConfigInFlight = request
+  return request
+}
+export async function saveAdminSettings(settings: Settings): Promise<Settings> {
+  const saved = await api<Settings>('/admin/settings', { method: 'PUT', body: JSON.stringify(settings) })
+  applyUploadLimit(saved.maxUploadBytes)
+  return saved
+}
 export function initialize() {
   if (!startup) startup = Promise.all([
     api<User>('/auth/me').then(user => { session.user = user }).catch(() => { session.user = null }),
-    api<PublicConfig>('/public/config').then(config => { session.config = config }).catch(() => undefined),
+    refreshPublicConfig().catch(() => undefined),
   ]).then(() => { session.ready = true })
   return startup
 }

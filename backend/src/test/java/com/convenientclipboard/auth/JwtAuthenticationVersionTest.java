@@ -27,7 +27,7 @@ class JwtAuthenticationVersionTest {
     JwtAuthenticationFilter filter;
 
     @BeforeEach void setUp() {
-        jwt = new JwtService(new AppProperties("http://localhost:8088", Path.of("data"), 1024,
+        jwt = new JwtService(new AppProperties("http://localhost:8088", Path.of("data"), 1048576,
                 "test-signing-key-at-least-32-characters", "admin", "admin-password-123", "test-encryption-key-at-least-32-characters"));
         filter = new JwtAuthenticationFilter(jwt, users, redis, new AuthCookies(false));
         when(redis.hasKey(anyString())).thenReturn(false);

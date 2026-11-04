@@ -1,7 +1,7 @@
 package com.convenientclipboard.auth;
 
 import com.convenientclipboard.common.ApiException;
-import com.convenientclipboard.config.AppProperties;
+import com.convenientclipboard.storage.SettingsService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -29,13 +29,13 @@ public class AuthController {
     private final JwtService jwt;
     private final StringRedisTemplate redis;
     private final RateLimiter limiter;
-    private final AppProperties properties;
+    private final SettingsService settings;
     private final AuthCookies cookies;
     private final String dummyHash;
     public AuthController(UserRepository users, PasswordEncoder passwords, JwtService jwt, StringRedisTemplate redis,
-                          RateLimiter limiter, AppProperties properties, AuthCookies cookies) {
+                          RateLimiter limiter, SettingsService settings, AuthCookies cookies) {
         this.users = users; this.passwords = passwords; this.jwt = jwt; this.redis = redis;
-        this.limiter = limiter; this.properties = properties;
+        this.limiter = limiter; this.settings = settings;
         this.cookies = cookies;
         this.dummyHash = passwords.encode(java.util.UUID.randomUUID().toString());
     }
@@ -45,7 +45,7 @@ public class AuthController {
         return Map.of("token", token.getToken(), "headerName", token.getHeaderName());
     }
     @GetMapping("/public/config") public Map<String,Object> publicConfig() {
-        return Map.of("retentionDays", 7, "maxUploadBytes", properties.maxUploadBytes(), "registrationEnabled", true);
+        return Map.of("retentionDays", 7, "maxUploadBytes", settings.get().maxUploadBytes(), "registrationEnabled", true);
     }
     @PostMapping("/auth/register")
     @ResponseStatus(HttpStatus.CREATED)

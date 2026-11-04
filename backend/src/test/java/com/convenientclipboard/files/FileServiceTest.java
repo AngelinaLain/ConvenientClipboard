@@ -33,10 +33,10 @@ class FileServiceTest {
     ApplicationEventPublisher events;
     AppPrincipal owner=new AppPrincipal(UUID.randomUUID(),"owner","USER");
     @BeforeEach void setup() throws Exception {
-        var properties=new AppProperties("https://files.example",directory,1024,"j".repeat(32),"admin","password123","k".repeat(32));
+        var properties=new AppProperties("https://files.example",directory,4*1048576L,"j".repeat(32),"admin","password123","k".repeat(32));
         repository=mock(FileRepository.class);coordinator=mock(StorageCoordinator.class);access=mock(StorageAccess.class);settings=mock(SettingsService.class);events=mock(ApplicationEventPublisher.class);
         when(coordinator.locked(any())).thenAnswer(invocation->((Supplier<?>)invocation.getArgument(0)).get());
-        when(settings.get()).thenReturn(new StorageSettings(1024,50));
+        when(settings.get()).thenReturn(new StorageSettings(1024,50,1048576L));
         local=new LocalStorage(properties);service=new FileService(repository,local,access,settings,coordinator,properties,events);
     }
     @Test void anonymousUploadAlwaysExpiresSevenDaysAndSanitizesFilename() {
@@ -84,5 +84,30 @@ class FileServiceTest {
         StoredFile file=file(Instant.now().plusSeconds(60));when(repository.find(file.id())).thenReturn(Optional.of(file));
         service.delete(file.id(),new AppPrincipal(UUID.randomUUID(),"admin","ADMIN"));
         var order=inOrder(access,repository);order.verify(access).delete(file);order.verify(repository).delete(file.id());
+    }
+    @Test void changingLimitTakesEffectImmediatelyAndIgnoresBootstrapLimit() {
+        long mib=1048576L;
+        var upload=new MockMultipartFile("file","dynamic.bin","application/octet-stream",new byte[(int)(mib+mib/2)]);
+        when(settings.get()).thenReturn(new StorageSettings(16*mib,50,mib));
+        assertEquals(HttpStatus.PAYLOAD_TOO_LARGE,assertThrows(ApiException.class,()->service.upload(upload,false,owner)).status());
+        assertEquals(0,local.usedBytes());
+        when(settings.get()).thenReturn(new StorageSettings(16*mib,50,2*mib));
+        FileInfo accepted=service.upload(upload,false,owner);
+        assertEquals(upload.getSize(),accepted.sizeBytes());
+        when(settings.get()).thenReturn(new StorageSettings(16*mib,50,mib));
+        assertEquals(HttpStatus.PAYLOAD_TOO_LARGE,assertThrows(ApiException.class,()->service.upload(upload,false,owner)).status());
+        assertEquals(upload.getSize(),local.usedBytes(),"Lowering the limit must preserve existing larger files");
+        verify(settings,times(3)).get();
+        verify(repository,times(1)).insert(any());
+    }
+    @Test void streamedBytesAlsoUseCurrentDynamicLimit() {
+        long mib=1048576L;
+        when(settings.get()).thenReturn(new StorageSettings(16*mib,50,mib));
+        var dishonest=new MockMultipartFile("file","stream.bin","application/octet-stream",new byte[(int)mib+1]) {
+            @Override public long getSize() { return 1; }
+        };
+        assertEquals(HttpStatus.PAYLOAD_TOO_LARGE,assertThrows(ApiException.class,()->service.upload(dishonest,false,owner)).status());
+        assertEquals(0,local.usedBytes());verify(repository,never()).insert(any());
+        verify(settings,times(1)).get();
     }
 }

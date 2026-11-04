@@ -8,6 +8,7 @@ import com.convenientclipboard.storage.SettingsService;
 import com.convenientclipboard.storage.StorageAccess;
 import com.convenientclipboard.storage.StorageChanged;
 import com.convenientclipboard.storage.StorageCoordinator;
+import com.convenientclipboard.storage.StorageSettings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -41,18 +42,20 @@ public class FileService {
     }
     public FileInfo upload(MultipartFile upload,boolean permanent,AppPrincipal principal) {
         if(permanent && principal==null) throw new ApiException(HttpStatus.UNAUTHORIZED,"请登录后选择永久保存");
-        if(upload.getSize()>properties.maxUploadBytes()) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,"文件超过单次上传限制");
         UUID id=UUID.randomUUID();
         String key=id.toString();
         StoredFile file;
         try {
             file=coordinator.locked(()->{
-                long available=settings.get().localCapacityBytes()-local.usedBytes();
+                StorageSettings limits=settings.get();
+                long maximum=limits.maxUploadBytes();
+                if(upload.getSize()>maximum) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,"文件超过当前单次上传限制");
+                long available=limits.localCapacityBytes()-local.usedBytes();
                 if(upload.getSize()>available || upload.getSize()>local.usableBytes()) throw new ApiException(HttpStatus.INSUFFICIENT_STORAGE,"本地存储空间不足，请稍后重试或联系管理员");
                 Instant now=Instant.now();
                 byte[] token=new byte[24]; random.nextBytes(token);
                 long size;
-                try(InputStream input=upload.getInputStream()) { size=local.write(key,input,Math.min(properties.maxUploadBytes(),available)); }
+                try(InputStream input=upload.getInputStream()) { size=local.write(key,input,Math.min(maximum,available)); }
                 catch(IOException ex) { throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE,"文件写入失败，请重试"); }
                 StoredFile result=new StoredFile(id,principal==null?null:principal.id(),safeFilename(upload.getOriginalFilename()),safeContentType(upload.getContentType()),size,key,Base64.getUrlEncoder().withoutPadding().encodeToString(token),permanent,permanent?null:now.plus(RETENTION),"LOCAL",null,now);
                 files.insert(result);

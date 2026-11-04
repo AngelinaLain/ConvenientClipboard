@@ -9,7 +9,7 @@ Java 21 + Spring Boot + Redis + Flyway + PostgreSQL + Vue 3 文件分享项目�
 - 共享页面展示文件信息并下载；下载使用附件响应，过期文件立即禁止访问，后台异步删除。
 - 独立管理入口、管理员账号密码登录、JWT HttpOnly Cookie、CSRF 防护、Redis 登录限流与退出后的令牌撤销。
 - 管理端分页检索所有用户与游客的文件并删除，创建用户、调整角色与启停状态、重置密码、删除无文件用户。
-- 管理端查看使用量、调整本地容量预算（GiB）及转存阈值，配置多个 S3、NFS、SMB 存储器。
+- 管理端查看使用量、动态调整单文件上传上限（MiB/GiB）、本地容量预算及转存阈值，配置多个 S3、NFS、SMB 存储器。
 - 文件先写本地；本地使用量达到预算的 **50%** 后，优先迁移较早的文件。远端写入并校验大小、提交数据库位置后，再删除本地副本。默认每 30 秒重试维护任务。
 - 多存储器按优先级尝试，失败时保留本地文件；停用存储器只停止新增迁移，已有文件仍能下载。
 
@@ -69,7 +69,16 @@ S3 凭据以 AES-GCM 加密后写入数据库，管理 API 不返回密钥。有
 
 `.env` 中设置 `APP_PUBLIC_BASE_URL=https://files.example.com`，用于生成分享链接。默认端口只绑定 `127.0.0.1`；通过本机 HTTPS 反向代理转发到 `8088`。在 HTTPS 环境设置 `APP_COOKIE_SECURE=true`。需要直接开放监听时设置 `APP_BIND_ADDRESS=0.0.0.0`，并按服务器部署要求配置 TLS。
 
-默认单文件最大 1 GiB。调整时同步修改 `APP_MAX_UPLOAD_BYTES`、后端 `APP_MAX_REQUEST_BYTES`（比文件上限多留 multipart 余量）及 `frontend/nginx.conf` 的 `client_max_body_size`。Compose 可在 backend.environment 中增加 `APP_MAX_REQUEST_BYTES`。Nginx 默认 1050 MiB，为 1 GiB 文件的 multipart 封装保留空间。
+默认单文件最大 1 GiB。在管理后台「容量设置」调整「单文件上传上限」，支持 1 MiB–100 GiB，保存后后续上传立即使用新值，无需重启容器。设置保存在 PostgreSQL，重启不会恢复默认值。`.env` 中的 `APP_MAX_UPLOAD_BYTES` 仅作为后台尚未保存设置时的初始值；兼容旧 API，保存容量设置时省略 `maxUploadBytes` 会保留当前上限。降低上限不会删除或限制已有文件的下载，尚未完成的上传在最终写入时会按最新设置再次校验。
+
+后端 multipart 解析器在每个上传请求开始时读取上限，接收过程中检查单文件及整个请求大小（包括 chunked 请求），临时文件写磁盘；业务写入时再次校验。内置 Nginx 的总请求硬上限为 100 GiB + 1 MiB 封装余量，不再固定卡在旧的 1 GiB。原 `APP_MAX_REQUEST_BYTES` 不再控制上传大小。如果前面还有自己的 Nginx、网关或 CDN，也需允许相应的请求大小与上传时长。大文件仍先落本地，需同时满足本地容量预算和实际磁盘剩余空间；接收临时文件与本地对象短时可能各占一份空间。
+
+从旧版升级时，需要一次重建 backend/frontend 来更新上传解析器与 Nginx；此后只在后台调整即可。使用已挂载 NFS/SMB 的部署示例：
+
+```sh
+git pull --ff-only
+docker compose -f compose.yaml -f compose.mounts.yaml up -d --build
+```
 
 备份需同时覆盖 PostgreSQL、`file_data`、远端桶以及 `.env` 中的存储加密密钥。保留同一份 `APP_STORAGE_ENCRYPTION_KEY`，否则已有存储凭据无法解密。首次启动脚本生成随机密钥；`.env` 已在 `.gitignore` 中排除。
 

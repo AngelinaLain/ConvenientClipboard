@@ -17,7 +17,7 @@
 | GET `/shares/{token}` | 公开 | 共享元数据 |
 | GET `/shares/{token}/download` | 公开 | 附件下载 |
 | GET `/admin/overview` | 管理员 | 本地/远端字节、文件计数、配置 |
-| GET / PUT `/admin/settings` | 管理员，PUT需CSRF | `{localCapacityBytes,offloadThreshold}` |
+| GET / PUT `/admin/settings` | 管理员，PUT需CSRF | `{localCapacityBytes,offloadThreshold,maxUploadBytes}` |
 | GET `/admin/files?page=0&size=20&query=` | 管理员 | 全部文件分页检索，包含 ownerName |
 | GET `/admin/users?page=0&size=20&query=` | 管理员 | 用户分页检索、文件数与占用 |
 | POST `/admin/users` | 管理员 + CSRF | `{username,password,role}` 创建账号 |
@@ -35,5 +35,7 @@
 用户字段：`id,username,role,enabled,createdAt,fileCount,storageBytes`。安全信息变化使旧 JWT 失效；重置自身密码后需要重新登录。自身禁用/降级/删除、最后启用管理员被移除、删除有文件用户均返回409。
 
 用户名为3–32位字母、数字或下划线，统一转为小写；密码8–72个字符且UTF-8不超过72字节。首次管理员密码至少12个字符。本地预算至少1MiB，阈值10–90%。
+
+`maxUploadBytes` 是单文件上限，范围 1048576–107374182400（1 MiB–100 GiB），保存后持久化并立即用于后续上传，无需重启；省略或传 `null` 保留当前值，旧版容量设置客户端仍可使用。GET `/public/config` 的 `maxUploadBytes` 返回当前有效上限，前台在进入上传页、重新聚焦及开始上传批次时更新。限制同时覆盖 Servlet multipart 解析和最终文件写入；超限返回413，实际磁盘或本地预算不足返回507。降低上限不影响已存文件的分享、下载和保存期限。
 
 常见状态：400参数错误、401未登录、403权限/CSRF拒绝、404不存在、409冲突、410分享过期、413上传超限、429认证限流、502远端删除失败、503服务暂不可用、507本地空间不足。

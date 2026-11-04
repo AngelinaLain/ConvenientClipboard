@@ -34,6 +34,8 @@ flowchart LR
 
 容量预算按照本地对象目录实际字节统计，硬上限同时检查磁盘剩余空间。上传、容量变更、元数据迁移及删除通过 PostgreSQL advisory transaction lock 串行化，防止并发上传突破预算。multipart 解析使用磁盘临时文件，不将整文件读入 JVM 内存。
 
+单文件上传上限由 `app_settings.max_upload_bytes` 持久化，V4迁移为已有部署保留空值，读取时回退到原 `APP_MAX_UPLOAD_BYTES`，首次保存设置后数据库值优先。范围为1MiB–100GiB。上传请求在进入安全过滤器前读取一次配置作为解析快照，动态 `MultipartConfigElement` 将该值及1MiB封装余量交给Tomcat，实际读取文件和chunked流时均有限制；请求结束清理线程上下文。写入本地对象时在容量锁内按数据库最新上限复核，调小上限可能拒绝尚未完成的上传；已有文件继续可读。Nginx仅保留100GiB+1MiB的部署硬上限，后台调大不再被旧1GiB限制阻挡。
+
 上传先落本地，提交数据库后唤醒后台任务；任务每 30 秒也会检查一次。达到阈值时，按创建时间迁移本地文件到启用且优先级较高的存储器。一个端点失败后尝试下一个。S3 成功顺序：PUT → HEAD 核对长度 → 提交数据库 location/provider → 删除本地副本；NFS/SMB：复制到同目录临时文件 → 校验长度并原子重命名 → 提交元数据 → 删除本地副本。长度校验不等同于内容哈希校验；公网 S3 连接应使用 HTTPS。
 
 NFS/SMB 使用操作系统文件系统驱动，挂载与 NAS 认证由宿主机或 Docker 完成。应用仅访问受限根目录，并在读、写、删除时验证 `.clipboard-storage-id`，不自动创建缺失挂载目录；共享缺失时拒绝操作，保留源文件/元数据供恢复后重试。标识用于检查目录身份，网络连接与 I/O 超时仍由挂载驱动处理。挂载命令和容器卷配置见 [配置说明](storage-mounts.md)。
@@ -52,4 +54,4 @@ HTTP 入口由 Spring Security 控制，管理路径需要 ADMIN，用户文件�
 
 未来 OIDC/SSO 应在独立回调中验证 issuer、audience、state、nonce，将 `(issuer, subject)` 映射到本地用户，再复用 `AppPrincipal` 和本地角色。管理员授权应继续由本地可信策略管理。当前交付不包含 SSO 登录或相关占位按钮。
 
-`RemoteStorage` 按类型分派到 S3 客户端和 `MountedStorage`。V2扩展存储类型，V3新增账号认证版本；保留V1迁移和已有数据。后续协议适配可继续扩展该层，无需改变分享 token 和保留规则。
+`RemoteStorage` 按类型分派到 S3 客户端和 `MountedStorage`。V2扩展存储类型，V3新增账号认证版本，V4增加持久化上传上限；保留已有迁移和数据。后续协议适配可继续扩展该层，无需改变分享 token 和保留规则。
