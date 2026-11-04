@@ -1,0 +1,17 @@
+# Isolated integration fixture. Use -p convenient-clipboard-qa and a separate env file.
+# These directories simulate mounted shares; no live NFS/SMB server is assumed.
+services:
+  backend:
+    image: convenient-clipboard-backend
+    volumes:
+      - type: bind
+        source: ./.local/qa-mounts
+        target: /mnt/remote
+        bind:
+          create_host_path: false
+  frontend:
+    image: convenient-clipboard-frontend
+  s3mock:
+    image: adobe/s3mock:4.10.0
+    environment:
+      initialBuckets: clipboard-tests

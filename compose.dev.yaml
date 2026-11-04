@@ -1,0 +1,6 @@
+# Development only: expose dependencies on loopback for a host-run backend.
+services:
+  postgres:
+    ports: ["127.0.0.1:${DEV_POSTGRES_PORT:-15432}:5432"]
+  redis:
+    ports: ["127.0.0.1:${DEV_REDIS_PORT:-16379}:6379"]

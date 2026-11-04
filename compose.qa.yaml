@@ -1,0 +1,9 @@
+# Optional integration-test service. Do not use S3Mock as production storage.
+services:
+  s3mock:
+    image: adobe/s3mock:4.10.0
+    profiles: [qa]
+    environment:
+      initialBuckets: clipboard-tests
+    ports:
+      - "127.0.0.1:9090:9090"

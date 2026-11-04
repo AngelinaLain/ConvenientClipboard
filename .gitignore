@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+**/target/
+**/node_modules/
+**/dist/
+.idea/
+*.iml
+.vscode/
+data/
+.local/
+*.log
+*.pid
+playwright-report/
+test-results/
+*.tsbuildinfo

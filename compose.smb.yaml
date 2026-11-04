@@ -1,0 +1,13 @@
+# Optional: let the Docker daemon mount an SMB 3 share.
+# Keep SMB_USERNAME / SMB_PASSWORD in the ignored .env, never source control.
+services:
+  backend:
+    volumes:
+      - smb_storage:/mnt/remote/smb
+volumes:
+  smb_storage:
+    driver: local
+    driver_opts:
+      type: cifs
+      device: "//${SMB_SERVER:?Set SMB server address}/${SMB_SHARE:?Set SMB share name}"
+      o: "addr=${SMB_SERVER},username=${SMB_USERNAME:?Set SMB user},password=${SMB_PASSWORD:?Set SMB password},vers=3.0,uid=10001,gid=10001,file_mode=0600,dir_mode=0700"

@@ -1,0 +1,10 @@
+# Bind a parent directory containing shares already mounted on the host.
+# Start only after mounting the NFS/SMB shares beneath this directory.
+services:
+  backend:
+    volumes:
+      - type: bind
+        source: ${MOUNTED_STORAGE_HOST_PATH:?Set an absolute existing host mount directory}
+        target: /mnt/remote
+        bind:
+          create_host_path: false

@@ -1,0 +1,44 @@
+server:
+  port: 8080
+  forward-headers-strategy: framework
+  shutdown: graceful
+spring:
+  application:
+    name: convenient-clipboard
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/clipboard}
+    username: ${SPRING_DATASOURCE_USERNAME:clipboard}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      timeout: 3s
+  servlet:
+    multipart:
+      max-file-size: ${APP_MAX_UPLOAD_BYTES:1073741824}B
+      max-request-size: ${APP_MAX_REQUEST_BYTES:1074790400}B
+      file-size-threshold: 0B
+      location: ${APP_UPLOAD_TEMP_PATH:${java.io.tmpdir}}
+  flyway:
+    enabled: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+app:
+  cookie-secure: ${APP_COOKIE_SECURE:false}
+  public-base-url: ${APP_PUBLIC_BASE_URL:http://localhost:8088}
+  storage-path: ${APP_STORAGE_PATH:./data/files}
+  max-upload-bytes: ${APP_MAX_UPLOAD_BYTES:1073741824}
+  jwt-secret: ${APP_JWT_SECRET:}
+  admin-username: ${APP_ADMIN_USERNAME:admin}
+  admin-password: ${APP_ADMIN_PASSWORD:}
+  storage-encryption-key: ${APP_STORAGE_ENCRYPTION_KEY:}
