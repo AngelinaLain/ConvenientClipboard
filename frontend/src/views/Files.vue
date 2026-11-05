@@ -74,7 +74,8 @@ onMounted(load)
       <div>
         <div class="eyebrow">YOUR FILES</div>
         <h1>我的文件</h1>
-        <p class="muted">分享、保存和管理，文件尽在掌握。</p></div>
+<!--        <p class="muted">分享、保存和管理，文件尽在掌握。</p>-->
+      </div>
       <RouterLink to="/" class="button button-primary">
         <Plus :size="17"/>
         上传文件
