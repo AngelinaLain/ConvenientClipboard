@@ -724,6 +724,44 @@ small {
     border-bottom: 0
 }
 
+.upload-resume-note {
+    color: #71816e;
+    font-size: 11px;
+    line-height: 1.7;
+    margin: 16px 0 0
+}
+
+.upload-cache-note {
+    display: block;
+    color: #71816e;
+    font-size: 10px;
+    line-height: 1.5;
+    margin-top: 5px
+}
+
+.upload-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0
+}
+
+.upload-item-actions .text-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px
+}
+
+@media (max-width: 540px) {
+    .upload-item {
+        flex-wrap: wrap
+    }
+
+    .upload-item-actions {
+        margin-left: auto
+    }
+}
+
 .file-icon {
     height: 40px;
     width: 34px;
@@ -2307,6 +2345,111 @@ td {
 .pagination .icon-button:disabled {
     cursor: default;
     opacity: .35
+}
+
+.file-search-bar {
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 12px
+}
+
+.file-search-bar .search-input {
+    flex: 1 1 260px;
+    max-width: none;
+    min-height: 40px
+}
+
+.file-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    color: #667960;
+    font-size: 11px
+}
+
+.file-filter select,
+.file-page-size select,
+.file-page-jump input {
+    border: 1px solid #dce6db;
+    border-radius: 7px;
+    background: #fff;
+    color: #466942;
+    padding: 9px 10px;
+    font: inherit
+}
+
+.file-filter select {
+    min-width: 112px;
+    min-height: 40px;
+    font-size: 12px
+}
+
+.file-search-actions,
+.file-page-size,
+.file-page-jump,
+.file-page-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px
+}
+
+.file-search-actions {
+    min-height: 40px
+}
+
+.file-pagination {
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 11px
+}
+
+.file-pagination > span {
+    margin-right: auto
+}
+
+.file-page-size select,
+.file-page-jump input {
+    padding: 6px 8px;
+    min-height: 32px
+}
+
+.file-page-jump input {
+    width: 62px
+}
+
+.file-pagination .is-current {
+    background: #edf5ec;
+    border-color: #91b28a;
+    color: #345d30;
+    font-weight: 700
+}
+
+.file-pagination .file-page-number:disabled {
+    opacity: .65
+}
+
+@media (max-width: 640px) {
+    .file-search-bar .search-input {
+        flex-basis: 100%
+    }
+
+    .file-filter {
+        flex: 1 1 100px
+    }
+
+    .file-page-buttons {
+        justify-content: center;
+        flex-wrap: wrap;
+        flex-basis: 100%;
+        order: 1;
+        gap: 5px
+    }
+
+    .file-page-jump {
+        justify-content: center;
+        flex-basis: 100%;
+        order: 2
+    }
 }
 
 .stacked-badges {

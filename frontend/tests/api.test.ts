@@ -106,3 +106,15 @@ describe('multipart upload CSRF recovery', () => {
     expect(FakeXHR.sent).toHaveLength(1)
   })
 })
+
+describe('binary upload requests', () => {
+  it('preserves an explicit binary content type and the exact Blob body', async () => {
+    const body = new Blob(['binary chunk'])
+    const fetchMock = vi.fn().mockResolvedValueOnce(token('chunk-token')).mockResolvedValueOnce(json({receivedChunks: [0]}))
+    vi.stubGlobal('fetch', fetchMock)
+    await client.api('/uploads/task/chunks/0', {method: 'PUT', body, headers: {'Content-Type': 'application/octet-stream'}})
+    const request = fetchMock.mock.calls[1]![1] as RequestInit
+    expect(new Headers(request.headers).get('Content-Type')).toBe('application/octet-stream')
+    expect(request.body).toBe(body)
+  })
+})

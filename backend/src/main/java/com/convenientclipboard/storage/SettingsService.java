@@ -27,7 +27,8 @@ public class SettingsService {
         return coordinator.locked(()->{
             long maximum=settings.maxUploadBytes()==null?get().maxUploadBytes():settings.maxUploadBytes();
             if(maximum<StorageSettings.MIN_UPLOAD_BYTES || maximum>StorageSettings.MAX_UPLOAD_BYTES) throw new ApiException(HttpStatus.BAD_REQUEST,"单文件上传上限必须介于 1 MiB 和 100 GiB 之间");
-            if(settings.localCapacityBytes()<local.usedBytes()) throw new ApiException(HttpStatus.CONFLICT,"容量不能小于当前本地文件占用，请先转存或删除文件");
+            if(settings.localCapacityBytes()-local.usedBytes()<coordinator.reservedUploadBytes(null))
+                throw new ApiException(HttpStatus.CONFLICT,"容量不能小于本地文件与未完成上传的预留空间，请先转存、删除或取消上传");
             jdbc.update("update app_settings set local_capacity_bytes=?,offload_threshold=?,max_upload_bytes=? where id=1",settings.localCapacityBytes(),settings.offloadThreshold(),maximum);
             return get();
         });

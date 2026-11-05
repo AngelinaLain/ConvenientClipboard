@@ -59,7 +59,7 @@ public class FileService {
                 long maximum = limits.maxUploadBytes();
                 if (upload.getSize() > maximum)
                     throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "文件超过当前单次上传限制");
-                long available = limits.localCapacityBytes() - local.usedBytes();
+                long available = limits.localCapacityBytes() - local.usedBytes() - coordinator.reservedUploadBytes(null);
                 if (upload.getSize() > available || upload.getSize() > local.usableBytes())
                     throw new ApiException(HttpStatus.INSUFFICIENT_STORAGE, "本地存储空间不足，请稍后重试或联系管理员");
                 Instant now = Instant.now();

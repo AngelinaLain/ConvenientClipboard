@@ -44,6 +44,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/public/**", "/api/shares/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register", "/api/files").permitAll()
+                        .requestMatchers("/api/uploads", "/api/uploads/**").permitAll()
                         .requestMatchers("/api/**").authenticated().anyRequest().denyAll())
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> {

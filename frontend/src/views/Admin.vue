@@ -257,7 +257,7 @@ onMounted(load)
             <div class="capacity-track"><span :style="{ width: `${usage}%` }"></span><i
                 :style="{ left: `${overview.offloadThreshold}%` }"
                 :title="`转存阈值 ${overview.offloadThreshold}%`"></i></div>
-            <p>本地使用量达到阈值后，系统会将较早上传的文件转存至可用的远端存储器。</p></div>
+            <p>本地使用量达到阈值后，系统优先转存永久保存的文件，再按剩余有效期从长到短转存临时文件。</p></div>
         </section>
         <section class="panel maintenance-panel"><span class="benefit-icon"><RefreshCw :size="22"/></span>
           <div><h2>文件自动维护</h2>
@@ -358,7 +358,7 @@ onMounted(load)
               <input v-model.number="threshold" type="number" min="10" max="90" step="1" required>
               <span>%</span>
             </div>
-            <small>默认 50%。达到阈值后，优先将较早上传的文件转存到远端。</small>
+            <small>默认 50%。达到阈值后，先转存永久文件，再转存剩余有效期较长的临时文件。</small>
           </label>
           <label class="field">单文件上传上限
             <div class="upload-limit-input">

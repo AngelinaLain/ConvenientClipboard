@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,13 +30,39 @@ public class FileRepository {
     public List<StoredFile> owned(UUID owner) { return jdbc.query("select * from stored_files where owner_id=? and (permanent or expires_at>now()) order by created_at desc",MAPPER,owner); }
     public List<StoredFile> all() { return jdbc.query("select * from stored_files order by created_at desc limit 1000",MAPPER); }
     public record AdminEntry(StoredFile file,String ownerName) {}
-    private static final String ADMIN_FILTER=" from stored_files f left join app_users u on u.id=f.owner_id where (?='' or strpos(lower(f.original_name),lower(?))>0 or strpos(lower(coalesce(u.username,'')),lower(?))>0 or strpos(f.id::text,lower(?))>0)";
-    public List<AdminEntry> adminPage(int page,int size,String query) {
-        return jdbc.query("select f.*,u.username as owner_name"+ADMIN_FILTER+" order by f.created_at desc,f.id desc limit ? offset ?",
-            (rs,n)->new AdminEntry(MAPPER.mapRow(rs,n),rs.getString("owner_name")),query,query,query,query,size,(long)page*size);
+    private static final String ADMIN_FILTER="""
+         from stored_files f left join app_users u on u.id=f.owner_id
+         where (?='' or strpos(lower(f.original_name),lower(?))>0
+             or strpos(lower(coalesce(u.username,'匿名用户')),lower(?))>0
+             or strpos(f.id::text,lower(?))>0)
+         and (?='' or f.location=?)
+         and (?='' or f.permanent=(?='PERMANENT'))
+        """;
+    private static List<Object> adminFilterParameters(String query, String location, String retention) {
+        return new ArrayList<>(List.of(query, query, query, query, location, location, retention, retention));
     }
-    public long adminCount(String query) { return jdbc.queryForObject("select count(*)"+ADMIN_FILTER,Long.class,query,query,query,query); }
-    public List<StoredFile> localCandidates() { return jdbc.query("select * from stored_files where location='LOCAL' and (permanent or expires_at>now()) order by created_at limit 100",MAPPER); }
+    public List<AdminEntry> adminPage(int page,int size,String query) {
+        return adminPage(page, size, query, "", "");
+    }
+    public List<AdminEntry> adminPage(int page,int size,String query,String location,String retention) {
+        List<Object> parameters = adminFilterParameters(query, location, retention);
+        parameters.add(size);
+        parameters.add((long) page * size);
+        return jdbc.query("select f.*,u.username as owner_name"+ADMIN_FILTER+" order by f.created_at desc,f.id desc limit ? offset ?",
+            (rs,n)->new AdminEntry(MAPPER.mapRow(rs,n),rs.getString("owner_name")),parameters.toArray());
+    }
+    public long adminCount(String query) { return adminCount(query, "", ""); }
+    public long adminCount(String query,String location,String retention) {
+        return jdbc.queryForObject("select count(*)"+ADMIN_FILTER,Long.class,adminFilterParameters(query, location, retention).toArray());
+    }
+    public List<StoredFile> localCandidates() {
+        return jdbc.query("""
+                select * from stored_files
+                where location='LOCAL' and (permanent or expires_at>now())
+                order by permanent desc, expires_at desc nulls last, created_at asc, id asc
+                limit 100
+                """,MAPPER);
+    }
     public List<StoredFile> expired() { return jdbc.query("select * from stored_files where not permanent and expires_at<=now() order by expires_at limit 100",MAPPER); }
     public void insert(StoredFile f) {
         jdbc.update("insert into stored_files(id,owner_id,original_name,content_type,size_bytes,object_key,share_token,permanent,expires_at,location,provider_id,created_at) values(?,?,?,?,?,?,?,?,?,?,?,?)",

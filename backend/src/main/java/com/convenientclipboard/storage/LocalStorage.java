@@ -26,7 +26,9 @@ public class LocalStorage {
     public long write(String key, InputStream input, long limit) throws IOException {
         Path target=path(key);
         long total=0;
-        try(var output=Files.newOutputStream(target,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE)) {
+        // A failed CREATE_NEW must never delete an object that existed before this write.
+        var output=Files.newOutputStream(target,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE);
+        try(output) {
             byte[] buffer=new byte[65536];
             int count;
             while((count=input.read(buffer))!=-1) {

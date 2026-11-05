@@ -54,16 +54,26 @@ public class AdminController {
     }
 
     @GetMapping("/files")
-    public Object files(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size, @RequestParam(defaultValue = "") String query) {
-        if (page == null && size == null && query.isBlank())
-            return files.all().stream().map(file -> fileRow(file, files.ownerName(file.ownerId()))).toList();
+    public Object files(@RequestParam(required = false) Integer page, @RequestParam(required = false) Integer size,
+                        @RequestParam(defaultValue = "") String query, @RequestParam(defaultValue = "") String location,
+                        @RequestParam(defaultValue = "") String retention) {
         int requestedPage = page == null ? 0 : page;
         int requestedSize = size == null ? 20 : size;
         if (requestedPage < 0 || requestedSize < 1 || requestedSize > 100 || query.length() > 200)
             throw new ApiException(HttpStatus.BAD_REQUEST, "页码需从 0 开始，每页 1–100 条，搜索文本最多 200 字");
         String search = query.strip();
-        List<Map<String, Object>> items = files.adminPage(requestedPage, requestedSize, search).stream().map(entry -> fileRow(entry.file(), entry.ownerName())).toList();
-        return Map.of("items", items, "page", requestedPage, "size", requestedSize, "total", files.adminCount(search));
+        String storageLocation = location.strip();
+        String retentionType = retention.strip();
+        if (!List.of("", "LOCAL", "S3", "NFS", "SMB").contains(storageLocation))
+            throw new ApiException(HttpStatus.BAD_REQUEST, "存储位置须为 LOCAL、S3、NFS 或 SMB");
+        if (!List.of("", "PERMANENT", "TEMPORARY").contains(retentionType))
+            throw new ApiException(HttpStatus.BAD_REQUEST, "保存类型须为 PERMANENT 或 TEMPORARY");
+        if (page == null && size == null && search.isEmpty() && storageLocation.isEmpty() && retentionType.isEmpty())
+            return files.all().stream().map(file -> fileRow(file, files.ownerName(file.ownerId()))).toList();
+        List<Map<String, Object>> items = files.adminPage(requestedPage, requestedSize, search, storageLocation, retentionType)
+                .stream().map(entry -> fileRow(entry.file(), entry.ownerName())).toList();
+        return Map.of("items", items, "page", requestedPage, "size", requestedSize,
+                "total", files.adminCount(search, storageLocation, retentionType));
     }
 
     private Map<String, Object> fileRow(StoredFile file, String ownerName) {

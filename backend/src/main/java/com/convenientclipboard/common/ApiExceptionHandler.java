@@ -16,6 +16,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -29,7 +31,7 @@ public class ApiExceptionHandler {
         return error(HttpStatus.BAD_REQUEST, message);
     }
     @ExceptionHandler({MethodArgumentTypeMismatchException.class, HttpMessageNotReadableException.class,
-            MissingServletRequestPartException.class, IllegalArgumentException.class})
+            MissingServletRequestPartException.class, MissingRequestHeaderException.class, IllegalArgumentException.class})
     public ResponseEntity<?> malformed(Exception ex) { return error(HttpStatus.BAD_REQUEST, "请求参数无效"); }
     @ExceptionHandler(MaxUploadSizeExceededException.class)
     public ResponseEntity<?> tooLarge(Exception ex) { return error(HttpStatus.PAYLOAD_TOO_LARGE, "文件超过上传大小限制"); }
@@ -37,6 +39,8 @@ public class ApiExceptionHandler {
     public ResponseEntity<?> notFound(Exception ex) { return error(HttpStatus.NOT_FOUND, "资源不存在"); }
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<?> method(Exception ex) { return error(HttpStatus.METHOD_NOT_ALLOWED, "不支持此请求方法"); }
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<?> mediaType(Exception ex) { return error(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "请求内容类型不受支持"); }
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<?> forbidden(Exception ex) { return error(HttpStatus.FORBIDDEN, "没有操作权限"); }
     @ExceptionHandler(DataIntegrityViolationException.class)

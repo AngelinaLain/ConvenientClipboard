@@ -36,6 +36,11 @@ class SecurityContractTest {
     static class ProbeController {
         @PostMapping("/api/files") Map<String,Boolean> upload() { return Map.of("ok", true); }
         @GetMapping("/api/admin/probe") Map<String,Boolean> admin() { return Map.of("ok", true); }
+        @PostMapping("/api/uploads") Map<String,Boolean> createUpload() { return Map.of("ok", true); }
+        @GetMapping("/api/uploads/{id}") Map<String,Boolean> uploadStatus() { return Map.of("ok", true); }
+        @PutMapping("/api/uploads/{id}/chunks/{index}") Map<String,Boolean> uploadChunk() { return Map.of("ok", true); }
+        @DeleteMapping("/api/uploads/{id}") Map<String,Boolean> cancelUpload() { return Map.of("ok", true); }
+        @PostMapping("/api/uploads/{id}/complete") Map<String,Boolean> completeUpload() { return Map.of("ok", true); }
     }
     @Test void anonymousCanGetCsrfToken() throws Exception {
         mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk())
@@ -51,6 +56,17 @@ class SecurityContractTest {
         mvc.perform(post("/api/files")).andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("CSRF_INVALID"));
         mvc.perform(postWithCsrf("/api/files")).andExpect(status().isOk());
+    }
+    @Test void resumableUploadRoutesAllowAnonymousAccessButRequireCsrfForEveryMutation() throws Exception {
+        mvc.perform(get("/api/uploads/task")).andExpect(status().isOk());
+        for(var request : java.util.List.of(post("/api/uploads"),put("/api/uploads/task/chunks/0"),
+                delete("/api/uploads/task"),post("/api/uploads/task/complete"))) {
+            mvc.perform(request).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_INVALID"));
+            var response=mvc.perform(get("/api/auth/csrf")).andReturn().getResponse();
+            var token=json.readTree(response.getContentAsString());
+            mvc.perform(request.cookie(response.getCookies()).header(token.get("headerName").asText(),token.get("token").asText()))
+                    .andExpect(status().isOk());
+        }
     }
     @Test void meRequiresAuthenticationAndAdministrationRequiresAdminRole() throws Exception {
         mvc.perform(get("/api/auth/me")).andExpect(status().isUnauthorized());
