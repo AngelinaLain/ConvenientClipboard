@@ -8,7 +8,7 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/clipboard}
     username: ${SPRING_DATASOURCE_USERNAME:clipboard}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
+    password: ${SPRING_DATASOURCE_PASSWORD:VwhPhZ2iib658ybAgSq6CN14oRoSU1ryhFNeycjjGL8=}
     hikari:
       maximum-pool-size: 10
   data:
@@ -36,7 +36,7 @@ app:
   public-base-url: ${APP_PUBLIC_BASE_URL:http://localhost:8088}
   storage-path: ${APP_STORAGE_PATH:./data/files}
   max-upload-bytes: ${APP_MAX_UPLOAD_BYTES:1073741824}
-  jwt-secret: ${APP_JWT_SECRET:}
+  jwt-secret: ${APP_JWT_SECRET:Z/0rWaPhXduhvsSFNc5+mQKZA7k34R+eyv30r/MsxNE=}
   admin-username: ${APP_ADMIN_USERNAME:admin}
-  admin-password: ${APP_ADMIN_PASSWORD:}
-  storage-encryption-key: ${APP_STORAGE_ENCRYPTION_KEY:}
+  admin-password: ${APP_ADMIN_PASSWORD:ul0S5KK0wuWD6aWLrVffXBEY6imOhziQ1EU81fHVL88=}
+  storage-encryption-key: ${APP_STORAGE_ENCRYPTION_KEY:MzcpVsCHguIpOCnZ0p4byCntm1fQQMiASySMzSAqaNw=}

@@ -1,11 +1,15 @@
 package com.convenientclipboard.auth;
 
 import com.convenientclipboard.common.ApiException;
+
 import java.nio.charset.StandardCharsets;
+
 import org.springframework.http.HttpStatus;
 
 public final class PasswordPolicy {
-    private PasswordPolicy() {}
+    private PasswordPolicy() {
+    }
+
     public static void validate(String password) {
         if (password == null || password.isBlank() || password.length() < 8
                 || password.getBytes(StandardCharsets.UTF_8).length > 72)
