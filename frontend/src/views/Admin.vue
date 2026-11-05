@@ -197,7 +197,7 @@ onMounted(load)
           ADMIN CONSOLE
         </div>
         <h1>管理后台</h1>
-        <p class="muted">看清每一份空间，管理每一次分享。</p>
+<!--        <p class="muted">看清每一份空间，管理每一次分享。</p>-->
       </div>
       <button class="button button-outline" :disabled="loading || busy" @click="load">
         <RefreshCw :size="16"/>
