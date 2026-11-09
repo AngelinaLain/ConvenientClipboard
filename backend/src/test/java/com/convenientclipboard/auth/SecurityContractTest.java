@@ -19,6 +19,8 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.ArgumentMatchers.*;
 
 @WebMvcTest(controllers = {AuthController.class, SecurityContractTest.ProbeController.class})
 @Import({SecurityConfig.class, JwtAuthenticationFilter.class, AuthCookies.class, SecurityContractTest.ProbeController.class})
@@ -51,6 +53,31 @@ class SecurityContractTest {
         mvc.perform(get("/api/public/config")).andExpect(status().isOk()).andExpect(jsonPath("$.maxUploadBytes").value(1048576));
         when(settings.get()).thenReturn(new StorageSettings(10737418240L,50,2097152L));
         mvc.perform(get("/api/public/config")).andExpect(status().isOk()).andExpect(jsonPath("$.maxUploadBytes").value(2097152));
+    }
+    @Test void publicConfigurationReflectsBothAccessSwitches() throws Exception {
+        when(settings.get()).thenReturn(new StorageSettings(10737418240L,50,1048576L,false,true));
+        mvc.perform(get("/api/public/config")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.allowAnonymousUploads").value(false)).andExpect(jsonPath("$.registrationEnabled").value(true));
+        when(settings.get()).thenReturn(new StorageSettings(10737418240L,50,1048576L,true,false));
+        mvc.perform(get("/api/public/config")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.allowAnonymousUploads").value(true)).andExpect(jsonPath("$.registrationEnabled").value(false));
+    }
+    @Test void disabledRegistrationRejectsValidRequestsBeforeUserCreationAndRateLimiting() throws Exception {
+        when(settings.get()).thenReturn(new StorageSettings(10737418240L,50,1048576L,true,false));
+        mvc.perform(postWithCsrf("/api/auth/register").contentType("application/json")
+                        .content("{\"username\":\"new_user\",\"password\":\"password123\"}"))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.message").value("当前未开放注册，请联系管理员创建账号"));
+        verifyNoInteractions(users,limiter);
+    }
+    @Test void reEnablingRegistrationAllowsCreatingAnOrdinaryUserAndSigningIn() throws Exception {
+        var registered=new UserRepository.User(java.util.UUID.randomUUID(),"new_user","hash","USER",true,0);
+        when(settings.get()).thenReturn(new StorageSettings(10737418240L,50,1048576L,true,true));
+        when(users.create(eq("new_user"),anyString(),eq("USER"))).thenReturn(registered);
+        when(jwt.issue(registered.principal(),0)).thenReturn("signed-token");
+        mvc.perform(postWithCsrf("/api/auth/register").contentType("application/json")
+                        .content("{\"username\":\"NEW_USER\",\"password\":\"password123\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.username").value("new_user"))
+                .andExpect(jsonPath("$.role").value("USER")).andExpect(cookie().value(AuthCookies.NAME,"signed-token"));
     }
     @Test void stateChangesRequireCsrfEvenForAnonymousUpload() throws Exception {
         mvc.perform(post("/api/files")).andExpect(status().isForbidden())

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-const config = (maxUploadBytes: number) => ({ retentionDays: 7, maxUploadBytes, registrationEnabled: true })
+const config = (maxUploadBytes: number) => ({ retentionDays: 7, maxUploadBytes, allowAnonymousUploads: true, registrationEnabled: true })
 let client: typeof import('../src/api')
 let policy: typeof import('../src/uploadPolicy')
 beforeEach(async () => { vi.resetModules(); client = await import('../src/api'); policy = await import('../src/uploadPolicy') })
@@ -56,7 +56,8 @@ describe('dynamic upload configuration', () => {
 
   it('applies the saved limit immediately and prevents an older read from undoing the saved setting', async () => {
     let resolveOld!: (response: Response) => void
-    const saved = { localCapacityBytes: 10 * policy.GIB, offloadThreshold: 50, maxUploadBytes: 5 * policy.GIB }
+    const saved = { localCapacityBytes: 10 * policy.GIB, offloadThreshold: 50, maxUploadBytes: 5 * policy.GIB,
+      allowAnonymousUploads: false, registrationEnabled: false }
     const fetchMock = vi.fn((url: string) => {
       if (url === '/api/public/config') return new Promise<Response>(done => { resolveOld = done })
       if (url === '/api/auth/csrf') return Promise.resolve(json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }))
@@ -66,16 +67,24 @@ describe('dynamic upload configuration', () => {
     const pending = client.refreshPublicConfig()
     expect(await client.saveAdminSettings(saved)).toEqual(saved)
     expect(client.session.config.maxUploadBytes).toBe(5 * policy.GIB)
+    expect(client.session.config.allowAnonymousUploads).toBe(false)
+    expect(client.session.config.registrationEnabled).toBe(false)
     resolveOld(json(config(policy.GIB))); await pending
     expect(client.session.config.maxUploadBytes).toBe(5 * policy.GIB)
+    expect(client.session.config.allowAnonymousUploads).toBe(false)
+    expect(client.session.config.registrationEnabled).toBe(false)
     const write = fetchMock.mock.calls.find(call => call[0] === '/api/admin/settings') as unknown as [string, RequestInit]
     expect(JSON.parse(write[1].body as string).maxUploadBytes).toBe(5 * policy.GIB)
+    expect(JSON.parse(write[1].body as string)).toMatchObject({allowAnonymousUploads: false, registrationEnabled: false})
   })
 
   it('keeps the existing limit when the administrator save is rejected', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(url.endsWith('/csrf') ? json({ token: 'csrf', headerName: 'X-XSRF-TOKEN' }) : json({ message: '无效设置' }, 400))))
-    await expect(client.saveAdminSettings({ localCapacityBytes: policy.GIB, offloadThreshold: 50, maxUploadBytes: 5 * policy.GIB })).rejects.toThrow('无效设置')
+    await expect(client.saveAdminSettings({ localCapacityBytes: policy.GIB, offloadThreshold: 50, maxUploadBytes: 5 * policy.GIB,
+      allowAnonymousUploads: false, registrationEnabled: false })).rejects.toThrow('无效设置')
     expect(client.session.config.maxUploadBytes).toBe(policy.GIB)
+    expect(client.session.config.allowAnonymousUploads).toBe(true)
+    expect(client.session.config.registrationEnabled).toBe(true)
   })
 })
 

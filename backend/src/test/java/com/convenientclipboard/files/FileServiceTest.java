@@ -50,6 +50,16 @@ class FileServiceTest {
         ApiException ex=assertThrows(ApiException.class,()->service.upload(new MockMultipartFile("file",new byte[1]),true,null));
         assertEquals(HttpStatus.UNAUTHORIZED,ex.status());assertEquals(0,local.usedBytes());verify(repository,never()).insert(any());
     }
+    @Test void anonymousSwitchIsEnforcedOnLegacyUploadsWhileAuthenticatedUsersCanUpload() {
+        when(settings.get()).thenReturn(new StorageSettings(1024,50,1048576L,false,true));
+        var upload=new MockMultipartFile("file","sample.txt","text/plain",new byte[]{1,2,3});
+        ApiException denied=assertThrows(ApiException.class,()->service.upload(upload,false,null));
+        assertEquals(HttpStatus.FORBIDDEN,denied.status());assertEquals(0,local.usedBytes());
+        verify(repository,never()).insert(any());
+        assertEquals(3,service.upload(upload,false,owner).sizeBytes());
+        when(settings.get()).thenReturn(new StorageSettings(1024,50,1048576L,true,true));
+        assertEquals(3,service.upload(upload,false,null).sizeBytes());
+    }
     @Test void hardCapacityRejectsBeforeWritingAndPermanentRequiresExplicitChoice() {
         var upload=new MockMultipartFile("file","a.bin","application/octet-stream",new byte[700]);
         assertFalse(service.upload(upload,false,owner).permanent());

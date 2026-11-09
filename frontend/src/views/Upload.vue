@@ -20,7 +20,8 @@ import {formatUploadLimit, validateUploadBatch} from '../uploadPolicy'
 import {useResumableUploads} from '../useResumableUploads'
 import type {UploadItem} from '../useResumableUploads'
 
-const uploads = useResumableUploads(() => session.user?.id || null)
+const canUpload = computed(() => !!session.user || session.config.allowAnonymousUploads)
+const uploads = useResumableUploads(() => session.user?.id || null, () => canUpload.value)
 const {items, active: uploading, pending: queued} = uploads
 const input = ref<HTMLInputElement>();
 const resumeInput = ref<HTMLInputElement>();
@@ -42,6 +43,10 @@ async function select(files: FileList | File[] | null) {
   try {
     const checked = await validateUploadBatch(selected)
     if (selectedOwner !== (session.user?.id || null)) return
+    if (!canUpload.value) {
+      notice.value = '匿名上传已关闭，请登录后上传';
+      return
+    }
     for (const {file, error} of checked) {
       if (error) {
         notice.value = error;
@@ -60,6 +65,13 @@ function drop(event: DragEvent) {
 }
 
 async function start() {
+  try {
+    await refreshPublicConfig()
+    if (!canUpload.value) return
+  } catch (e) {
+    notice.value = `无法读取上传设置：${(e as Error).message}`
+    return
+  }
   await uploads.startAll()
 }
 
@@ -78,6 +90,7 @@ function statusText(item: UploadItem) {
   return '等待上传'
 }
 function chooseOriginal(item: UploadItem) {
+  if (!canUpload.value) return
   resumeTarget.value = item
   resumeInput.value?.click()
 }
@@ -86,7 +99,7 @@ async function resumeSelected(event: Event) {
   const file = element.files?.[0]
   const item = resumeTarget.value
   element.value = ''
-  if (file && item) await uploads.attach(item, file)
+  if (file && item && canUpload.value) await uploads.attach(item, file)
 }
 
 function beforeUnload(event: BeforeUnloadEvent) {
@@ -97,28 +110,44 @@ watch(uploading, active => {
   if (active) window.addEventListener('beforeunload', beforeUnload)
   else window.removeEventListener('beforeunload', beforeUnload)
 })
+watch(canUpload, allowed => {
+  if (!allowed) {
+    dragging.value = false
+    for (const item of items.value) {
+      if (['hashing', 'checking', 'uploading', 'merging'].includes(item.stage)) uploads.pause(item)
+    }
+  }
+}, {flush: 'sync'})
 watch(() => session.user?.id || null, () => {
   permanent.value = false
-  void uploads.restore()
+  void restoreUploads()
 }, {flush: 'sync'})
 watch(permanent, value => {
   for (const item of items.value) if (!item.record && ['queued', 'paused', 'error'].includes(item.stage)) item.permanent = value && !!session.user
 })
 const suspend = () => uploads.suspend()
-const pageShow = (event: PageTransitionEvent) => { if (event.persisted) void uploads.restore() }
-const poll = () => { void uploads.poll() }
+const pageShow = (event: PageTransitionEvent) => { if (event.persisted) void restoreUploads() }
+const poll = () => { void refreshConfig(); void uploads.poll() }
 
 async function refreshConfig() {
   try {
     await refreshPublicConfig()
   } catch (e) {
-    notice.value = `无法读取当前上传限制：${(e as Error).message}`
+    notice.value = `无法读取上传设置：${(e as Error).message}`
+  }
+}
+
+async function restoreUploads() {
+  try {
+    await refreshPublicConfig()
+    await uploads.restore()
+  } catch (e) {
+    notice.value = `无法恢复上传：${(e as Error).message}`
   }
 }
 
 onMounted(() => {
-  void refreshConfig();
-  void uploads.restore()
+  void restoreUploads()
   pollTimer = setInterval(poll, 10000)
   window.addEventListener('focus', refreshConfig)
   window.addEventListener('online', poll)
@@ -158,14 +187,21 @@ async function copyLink(file: FileInfo) {
           formatUploadLimit(session.config.maxUploadBytes)
         }}</span></div>
       <input ref="input" type="file" multiple class="visually-hidden" aria-label="选择上传文件"
+             :disabled="!canUpload"
              @change="select(($event.target as HTMLInputElement).files)">
-      <input ref="resumeInput" type="file" class="visually-hidden" aria-label="选择原文件继续上传" @change="resumeSelected">
-      <button class="drop-zone" :class="{ dragging }" @click="input?.click()"
+      <input ref="resumeInput" type="file" class="visually-hidden" aria-label="选择原文件继续上传" :disabled="!canUpload" @change="resumeSelected">
+      <button v-if="canUpload" class="drop-zone" :class="{ dragging }" @click="input?.click()"
               @dragover.prevent="dragging = true" @dragleave.prevent="dragging = false" @drop.prevent="drop"><span
           class="upload-illustration"><CloudUpload :size="36" :stroke-width="1.5"/></span><strong>{{
           dragging ? '松手' : '拖拽文件到这里'
         }}</strong><span>或<span class="link-color">点击选择文件<ArrowRight :size="14"/></span></span><small>支持任意类型文件，可一次选择多个 · 中断后可继续上传</small>
       </button>
+      <div v-else class="upload-login-required" role="status">
+        <LockKeyhole :size="32" :stroke-width="1.5"/>
+        <strong>登录后即可上传文件</strong>
+        <p>管理员已关闭匿名上传，请先登录。</p>
+        <RouterLink :to="{path: '/login', query: {next: '/'}}" class="button button-primary">前往登录<ArrowRight :size="16"/></RouterLink>
+      </div>
       <div class="retention-row">
         <div class="retention-info">
           <Timer :size="18"/>
@@ -209,7 +245,7 @@ async function copyLink(file: FileInfo) {
           </button>
           <div class="upload-item-actions">
             <button v-if="['hashing', 'checking', 'uploading', 'merging'].includes(item.stage)" class="text-button" @click="uploads.pause(item)"><Pause :size="15"/>暂停</button>
-            <button v-else-if="!item.result && !item.record?.cancelled && item.stage !== 'cancelling'" class="text-button"
+            <button v-else-if="canUpload && !item.result && !item.record?.cancelled && item.stage !== 'cancelling'" class="text-button"
                     @click="item.source ? uploads.start(item) : chooseOriginal(item)"><Play :size="15"/>{{ item.source ? '继续' : '选择原文件' }}</button>
             <button class="icon-button" :aria-label="item.result ? '移除上传记录' : '取消上传'" :title="item.result ? '移除上传记录' : '取消上传并清理分片'"
                     :disabled="item.stage === 'cancelling'" @click="uploads.cancel(item)"><X :size="17"/></button>
@@ -217,11 +253,11 @@ async function copyLink(file: FileInfo) {
         </div>
       </div>
       <div class="upload-actions"><span><LockKeyhole :size="14"/>文件通过随机链接访问</span>
-        <button v-if="queued.length" class="button button-primary" :disabled="uploading" @click="start">
+        <button v-if="canUpload && queued.length" class="button button-primary" :disabled="uploading" @click="start">
           {{ uploading ? '正在上传…' : `上传${queued.length > 1 ? ` ${queued.length} 个` : ''}文件并生成链接` }}
           <ArrowRight :size="17"/>
         </button>
-        <button v-else class="button button-primary" :disabled="uploading" @click="input?.click()">
+        <button v-else-if="canUpload" class="button button-primary" :disabled="uploading" @click="input?.click()">
           {{ items.length ? '继续添加文件' : '选择文件' }}
           <Plus :size="17"/>
         </button>

@@ -65,7 +65,7 @@ class UploadServicePostgresTest {
     @AfterAll void removeSchema() { if(admin!=null && schema!=null) admin.execute("drop schema "+schema+" cascade"); }
     @BeforeEach void setUp() throws Exception {
         jdbc.execute("truncate stored_files,upload_tasks,app_users cascade");
-        jdbc.update("update app_settings set local_capacity_bytes=?,offload_threshold=50,max_upload_bytes=? where id=1",64L*1024*1024,32L*1024*1024);
+        jdbc.update("update app_settings set local_capacity_bytes=?,offload_threshold=50,max_upload_bytes=?,allow_anonymous_uploads=true,registration_enabled=true where id=1",64L*1024*1024,32L*1024*1024);
         properties=new AppProperties("https://files.test",directory,32L*1024*1024,"j".repeat(32),"admin","password123","k".repeat(32));
         local=new LocalStorage(properties);
         // @TempDir has class lifecycle here; reset disk state between tests.
@@ -104,6 +104,30 @@ class UploadServicePostgresTest {
         service.create(request,TOKEN,null);
         for(int index=0;index<request.chunkHashes().size();index++)
             chunk(request,index,Arrays.copyOfRange(data,index*UploadTask.CHUNK_SIZE,Math.min(data.length,(index+1)*UploadTask.CHUNK_SIZE)));
+    }
+
+    @Test void persistedAccessSwitchesBlockGuestTasksAndOlderSettingsRequestsPreserveThem() {
+        byte[] data=bytes(12);
+        UploadRequest request=request(data);
+        service.create(request,TOKEN,null);
+        settings.save(new StorageSettings(64L*1048576,50,32L*1048576,false,false));
+        SettingsService restarted=new SettingsService(jdbc,coordinator,local,properties);
+        assertThat(restarted.get().allowAnonymousUploads()).isFalse();
+        assertThat(restarted.get().registrationEnabled()).isFalse();
+        StorageSettings legacySave=restarted.save(new StorageSettings(64L*1048576,60,32L*1048576));
+        assertThat(legacySave.allowAnonymousUploads()).isFalse();
+        assertThat(legacySave.registrationEnabled()).isFalse();
+        error(HttpStatus.FORBIDDEN,() -> chunk(request,0,data));
+        error(HttpStatus.FORBIDDEN,() -> service.complete(request.id(),TOKEN,null));
+        error(HttpStatus.FORBIDDEN,() -> service.create(request,TOKEN,null));
+        assertThat(service.get(request.id(),TOKEN,null).state()).isEqualTo("UPLOADING");
+        assertThat(coordinator.reservedUploadBytes(null)).isEqualTo(data.length);
+        service.cancel(request.id(),TOKEN,null);
+        assertThat(coordinator.reservedUploadBytes(null)).isZero();
+        restarted.save(new StorageSettings(64L*1048576,50,32L*1048576,true,true));
+        UploadRequest reopened=request(data);
+        upload(reopened,data);
+        assertThat(service.complete(reopened.id(),TOKEN,null).state()).isEqualTo("COMPLETED");
     }
 
     @Test void diskReceiptRecoveryRestartAndCompletionAreIdempotent() throws Exception {
@@ -316,6 +340,8 @@ class UploadServicePostgresTest {
             old.update("insert into upload_tasks(id,token_hash,original_name,content_type,size_bytes,permanent,chunk_hashes,expires_at) "
                     + "values(?,?,'file','text/plain',1,false,'[]',?)",inactive,"b".repeat(64),Timestamp.from(now.plusSeconds(86400-1200)));
             Flyway.configure().dataSource(source).schemas(oldSchema).defaultSchema(oldSchema).load().migrate();
+            assertThat(old.queryForObject("select allow_anonymous_uploads from app_settings where id=1",Boolean.class)).isTrue();
+            assertThat(old.queryForObject("select registration_enabled from app_settings where id=1",Boolean.class)).isTrue();
             assertThat(old.queryForObject("select expires_at from upload_tasks where id=?",Timestamp.class,recent).toInstant()).isEqualTo(now.plusSeconds(600));
             assertThat(old.queryForObject("select expires_at from upload_tasks where id=?",Timestamp.class,inactive).toInstant()).isEqualTo(now.minusSeconds(600));
             for(var entry:unchanged.entrySet())

@@ -28,6 +28,8 @@ class SettingsServiceTest {
     private Long storedLimit;
     private long storedCapacity=CAPACITY;
     private int storedThreshold=50;
+    private boolean storedAnonymous=true;
+    private boolean storedRegistration=true;
     private SettingsService service;
     private AppProperties properties(long bootstrap) { return new AppProperties("http://localhost",Path.of("data"),bootstrap,"j".repeat(32),"admin","password123","k".repeat(32)); }
     @BeforeEach void setup() throws Exception {
@@ -35,16 +37,19 @@ class SettingsServiceTest {
         when(row.getLong("local_capacity_bytes")).thenAnswer(ignored->storedCapacity);
         when(row.getInt("offload_threshold")).thenAnswer(ignored->storedThreshold);
         when(row.getObject("max_upload_bytes",Long.class)).thenAnswer(ignored->storedLimit);
+        when(row.getBoolean("allow_anonymous_uploads")).thenAnswer(ignored->storedAnonymous);
+        when(row.getBoolean("registration_enabled")).thenAnswer(ignored->storedRegistration);
         when(jdbc.queryForObject(anyString(),org.mockito.ArgumentMatchers.<RowMapper<StorageSettings>>any())).thenAnswer(invocation->invocation.<RowMapper<StorageSettings>>getArgument(1).mapRow(row,0));
-        when(jdbc.update(anyString(),anyLong(),anyInt(),anyLong())).thenAnswer(invocation->{
-            storedCapacity=invocation.getArgument(1);storedThreshold=invocation.getArgument(2);storedLimit=invocation.getArgument(3);return 1;
+        when(jdbc.update(anyString(),anyLong(),anyInt(),anyLong(),anyBoolean(),anyBoolean())).thenAnswer(invocation->{
+            storedCapacity=invocation.getArgument(1);storedThreshold=invocation.getArgument(2);storedLimit=invocation.getArgument(3);
+            storedAnonymous=invocation.getArgument(4);storedRegistration=invocation.getArgument(5);return 1;
         });
         service=new SettingsService(jdbc,coordinator,local,properties(2*MIB));
     }
     @Test void nullableMigrationValuePreservesExistingEnvironmentUntilFirstSave() {
         assertEquals(2*MIB,service.get().maxUploadBytes());
         assertNull(storedLimit,"Read-only config requests must not silently initialize the database");
-        verify(jdbc,never()).update(anyString(),anyLong(),anyInt(),anyLong());
+        verify(jdbc,never()).update(anyString(),anyLong(),anyInt(),anyLong(),anyBoolean(),anyBoolean());
     }
     @Test void oldSettingsRequestFreezesBootstrapAndRestartsRespectPersistedValue() throws Exception {
         StorageSettings oldRequest=new ObjectMapper().readValue("{\"localCapacityBytes\":10737418240,\"offloadThreshold\":60}",StorageSettings.class);
@@ -66,12 +71,31 @@ class SettingsServiceTest {
         assertEquals(2*MIB,service.save(new StorageSettings(CAPACITY,50,2*MIB)).maxUploadBytes());
         assertEquals(2*MIB,storedLimit);
     }
+    @Test void accessSwitchesPersistIndependentlyAndSurviveServiceRestart() {
+        StorageSettings saved=service.save(new StorageSettings(CAPACITY,50,2*MIB,false,true));
+        assertFalse(saved.allowAnonymousUploads());assertTrue(saved.registrationEnabled());
+        SettingsService restarted=new SettingsService(jdbc,coordinator,local,properties(8*MIB));
+        assertFalse(restarted.get().allowAnonymousUploads());assertTrue(restarted.get().registrationEnabled());
+        saved=restarted.save(new StorageSettings(CAPACITY,50,null,true,false));
+        assertTrue(saved.allowAnonymousUploads());assertFalse(saved.registrationEnabled());
+        assertEquals(2*MIB,saved.maxUploadBytes());
+    }
+    @Test void oldAndNullSettingsRequestsPreserveDisabledAccessSwitches() throws Exception {
+        storedAnonymous=false;storedRegistration=false;
+        StorageSettings oldRequest=new ObjectMapper().readValue("{\"localCapacityBytes\":10737418240,\"offloadThreshold\":60,\"maxUploadBytes\":2097152}",StorageSettings.class);
+        assertNull(oldRequest.allowAnonymousUploads());assertNull(oldRequest.registrationEnabled());
+        StorageSettings saved=service.save(oldRequest);
+        assertFalse(saved.allowAnonymousUploads());assertFalse(saved.registrationEnabled());
+        StorageSettings nullRequest=new ObjectMapper().readValue("{\"localCapacityBytes\":10737418240,\"offloadThreshold\":50,\"allowAnonymousUploads\":null,\"registrationEnabled\":null}",StorageSettings.class);
+        saved=service.save(nullRequest);
+        assertFalse(saved.allowAnonymousUploads());assertFalse(saved.registrationEnabled());
+    }
     @Test void invalidValuesCannotBePersistedEvenOutsideControllerValidation() {
         for(long invalid:new long[]{0,-1,MIB-1,StorageSettings.MAX_UPLOAD_BYTES+1}) {
             ApiException failure=assertThrows(ApiException.class,()->service.save(new StorageSettings(CAPACITY,50,invalid)));
             assertEquals(HttpStatus.BAD_REQUEST,failure.status());assertNull(storedLimit);
         }
-        verify(jdbc,never()).update(anyString(),anyLong(),anyInt(),anyLong());
+        verify(jdbc,never()).update(anyString(),anyLong(),anyInt(),anyLong(),anyBoolean(),anyBoolean());
     }
     @Test void requestValidationAllowsMissingValueButRejectsOutOfRangeValues() {
         try(var factory=Validation.buildDefaultValidatorFactory()) {

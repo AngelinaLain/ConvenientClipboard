@@ -14,22 +14,27 @@ public class SettingsService {
     private final AppProperties properties;
     public SettingsService(JdbcTemplate jdbc, StorageCoordinator coordinator, LocalStorage local,AppProperties properties) { this.jdbc=jdbc;this.coordinator=coordinator;this.local=local;this.properties=properties; }
     public StorageSettings get() {
-        return jdbc.queryForObject("select local_capacity_bytes,offload_threshold,max_upload_bytes from app_settings where id=1",
+        return jdbc.queryForObject("select local_capacity_bytes,offload_threshold,max_upload_bytes,allow_anonymous_uploads,registration_enabled from app_settings where id=1",
             (rs,n)->{
                 Long configured=rs.getObject("max_upload_bytes",Long.class);
                 long effective=configured==null?properties.maxUploadBytes():configured;
                 if(effective<StorageSettings.MIN_UPLOAD_BYTES || effective>StorageSettings.MAX_UPLOAD_BYTES)
                     throw new IllegalStateException("The effective upload limit must be between 1 MiB and 100 GiB; check APP_MAX_UPLOAD_BYTES before first settings initialization");
-                return new StorageSettings(rs.getLong("local_capacity_bytes"),rs.getInt("offload_threshold"),effective);
+                return new StorageSettings(rs.getLong("local_capacity_bytes"),rs.getInt("offload_threshold"),effective,
+                        rs.getBoolean("allow_anonymous_uploads"),rs.getBoolean("registration_enabled"));
             });
     }
     public StorageSettings save(StorageSettings settings) {
         return coordinator.locked(()->{
-            long maximum=settings.maxUploadBytes()==null?get().maxUploadBytes():settings.maxUploadBytes();
+            StorageSettings current=get();
+            long maximum=settings.maxUploadBytes()==null?current.maxUploadBytes():settings.maxUploadBytes();
+            boolean anonymous=settings.allowAnonymousUploads()==null?current.allowAnonymousUploads():settings.allowAnonymousUploads();
+            boolean registration=settings.registrationEnabled()==null?current.registrationEnabled():settings.registrationEnabled();
             if(maximum<StorageSettings.MIN_UPLOAD_BYTES || maximum>StorageSettings.MAX_UPLOAD_BYTES) throw new ApiException(HttpStatus.BAD_REQUEST,"单文件上传上限必须介于 1 MiB 和 100 GiB 之间");
             if(settings.localCapacityBytes()-local.usedBytes()<coordinator.reservedUploadBytes(null))
                 throw new ApiException(HttpStatus.CONFLICT,"容量不能小于本地文件与未完成上传的预留空间，请先转存、删除或取消上传");
-            jdbc.update("update app_settings set local_capacity_bytes=?,offload_threshold=?,max_upload_bytes=? where id=1",settings.localCapacityBytes(),settings.offloadThreshold(),maximum);
+            jdbc.update("update app_settings set local_capacity_bytes=?,offload_threshold=?,max_upload_bytes=?,allow_anonymous_uploads=?,registration_enabled=? where id=1",
+                    settings.localCapacityBytes(),settings.offloadThreshold(),maximum,anonymous,registration);
             return get();
         });
     }

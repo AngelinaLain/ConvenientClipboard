@@ -37,7 +37,7 @@ async function signOut() {
             <LogOut :size="18"/>
           </button>
         </template>
-        <RouterLink v-else to="/login" class="button button-small button-dark">登录 / 注册
+        <RouterLink v-else to="/login" class="button button-small button-dark">{{ session.config.registrationEnabled ? '登录 / 注册' : '登录' }}
           <ArrowUpRight :size="15"/>
         </RouterLink>
       </nav>

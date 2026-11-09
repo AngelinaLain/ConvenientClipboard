@@ -5,16 +5,16 @@
 | 方法 / 路径 | 权限 | 用途 |
 | --- | --- | --- |
 | GET `/auth/csrf` | 公开 | CSRF token 和头名称 |
-| GET `/public/config` | 公开 | 保留天数、单文件大小上限 |
-| POST `/auth/register` | 公开 + CSRF | `{username,password}` 注册普通用户并登录 |
+| GET `/public/config` | 公开 | 保留天数、单文件大小上限、匿名上传及注册开关 |
+| POST `/auth/register` | 开放注册时公开 + CSRF | `{username,password}` 注册普通用户并登录 |
 | POST `/auth/login` | 公开 + CSRF | `{username,password}` 登录 |
 | GET `/auth/me` | 登录 | `{id,username,role}` |
 | POST `/auth/logout` | 登录 + CSRF | 撤销当前 JWT |
-| POST `/files` | 公开 + CSRF | multipart `file`、`permanent`，永久保存需登录 |
-| POST `/uploads` | 公开 + CSRF + 上传令牌 | 创建或恢复分片上传任务，同ID同元数据幂等 |
+| POST `/files` | 登录或允许匿名上传 + CSRF | multipart `file`、`permanent`，永久保存需登录 |
+| POST `/uploads` | 上传令牌 + CSRF，受匿名上传开关约束 | 创建或恢复分片上传任务，同ID同元数据幂等 |
 | GET `/uploads/{id}` | 上传令牌，账号任务还需原账号 | 查询服务端已接收分片和完成结果 |
-| PUT `/uploads/{id}/chunks/{index}` | 上传令牌 + CSRF | 原始二进制分片，校验大小和SHA-256 |
-| POST `/uploads/{id}/complete` | 上传令牌 + CSRF | 流式合并并提交文件，重复调用返回同一结果 |
+| PUT `/uploads/{id}/chunks/{index}` | 上传令牌 + CSRF，受匿名上传开关约束 | 原始二进制分片，校验大小和SHA-256 |
+| POST `/uploads/{id}/complete` | 上传令牌 + CSRF，未完成匿名任务受开关约束 | 流式合并并提交文件，重复调用返回同一结果 |
 | DELETE `/uploads/{id}` | 上传令牌 + CSRF | 取消未完成任务并释放容量预留 |
 | GET `/files` | 登录 | 自己未过期文件数组 |
 | PATCH `/files/{id}/retention` | 所有者 + CSRF | `{permanent:boolean}` |
@@ -22,7 +22,7 @@
 | GET `/shares/{token}` | 公开 | 共享元数据 |
 | GET `/shares/{token}/download` | 公开 | 附件下载 |
 | GET `/admin/overview` | 管理员 | 本地/远端字节、文件计数、配置 |
-| GET / PUT `/admin/settings` | 管理员，PUT需CSRF | `{localCapacityBytes,offloadThreshold,maxUploadBytes}` |
+| GET / PUT `/admin/settings` | 管理员，PUT需CSRF | `{localCapacityBytes,offloadThreshold,maxUploadBytes,allowAnonymousUploads,registrationEnabled}` |
 | GET `/admin/files?page=0&size=20&query=&location=&retention=` | 管理员 | 全部文件分页、关键词检索与组合筛选，包含 ownerName |
 | GET `/admin/users?page=0&size=20&query=` | 管理员 | 用户分页检索、文件数与占用 |
 | POST `/admin/users` | 管理员 + CSRF | `{username,password,role}` 创建账号 |
@@ -61,6 +61,8 @@
 用户名为3–32位字母、数字或下划线，统一转为小写；密码8–72个字符且UTF-8不超过72字节。首次管理员密码至少12个字符。本地预算至少1MiB，阈值10–90%。
 
 `maxUploadBytes` 是单文件上限，范围 1048576–107374182400（1 MiB–100 GiB），保存后持久化并立即用于后续上传，无需重启；省略或传 `null` 保留当前值，旧版容量设置客户端仍可使用。GET `/public/config` 的 `maxUploadBytes` 返回当前有效上限，前台在进入上传页、重新聚焦及开始上传批次时更新。限制同时覆盖 Servlet multipart 解析和最终文件写入；超限返回413，实际磁盘或本地预算不足返回507。降低上限不影响已存文件的分享、下载和保存期限。
+
+`allowAnonymousUploads` 与 `registrationEnabled` 为布尔值，默认均为 `true`，通过 `/admin/settings` 保存到数据库并立即生效；旧客户端省略这些字段时保留当前值。GET `/public/config` 同时返回这两个当前值，供上传页与登录页显示对应入口。关闭匿名上传后，游客不能使用旧整文件接口或新建分片任务；已有匿名任务也不能续租、写片或提交完成，即使持令牌的人后来登录也不能改变该任务的匿名身份，但仍可查询原结果或取消未完成任务。关闭注册后，POST `/auth/register` 返回403，已有用户登录和管理员创建账号不受影响。开关不影响已保存文件的分享与下载。
 
 常见状态：400参数错误、401未登录、403权限/CSRF拒绝、404不存在、409冲突、410分享过期、413上传超限、429认证限流、502远端删除失败、503服务暂不可用、507本地空间不足。
 

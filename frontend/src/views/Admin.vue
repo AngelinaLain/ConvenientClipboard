@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, reactive, ref} from 'vue'
 import {Check, Cloud, Database, File, HardDrive, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, X} from 'lucide-vue-next'
-import {api, applyUploadLimit, saveAdminSettings, size} from '../api'
+import {api, applyAdminSettings, saveAdminSettings, size} from '../api'
 import type {Overview, Provider, Settings} from '../types'
 import AdminFiles from '../components/AdminFiles.vue'
 import AdminUsers from '../components/AdminUsers.vue'
@@ -10,11 +10,14 @@ import {useStorageSpeedTests} from '../useStorageSpeedTests'
 import {GIB, MIB, parseUploadLimit, uploadLimitInput} from '../uploadPolicy'
 import type {UploadSizeUnit} from '../uploadPolicy'
 
-const tab = ref<'overview' | 'files' | 'users' | 'storage' | 'settings'>('overview');
+const tab = ref<'overview' | 'files' | 'users' | 'storage' | 'settings' | 'access'>('overview');
 const overview = ref<Overview>();
 const providers = ref<Provider[]>([]);
 const capacityGiB = ref(10);
 const threshold = ref(50);
+const savedSettings = ref<Settings>();
+const allowAnonymousUploads = ref(true);
+const registrationEnabled = ref(true);
 const loading = ref(true);
 const busy = ref(false);
 const error = ref('');
@@ -61,13 +64,16 @@ async function load() {
         ]);
     overview.value = result[0];
     providers.value = result[1];
+    savedSettings.value = result[2];
+    allowAnonymousUploads.value = result[2].allowAnonymousUploads;
+    registrationEnabled.value = result[2].registrationEnabled;
     capacityGiB.value = result[2].localCapacityBytes / 1024 ** 3;
     threshold.value = result[2].offloadThreshold;
     const limit = uploadLimitInput(result[2].maxUploadBytes);
 
     uploadLimitValue.value = limit.value;
     uploadLimitUnit.value = limit.unit;
-    applyUploadLimit(result[2].maxUploadBytes);
+    applyAdminSettings(result[2]);
     reloadKey.value++
   } catch (e) {
     fail(e)
@@ -101,7 +107,7 @@ async function maintenance() {
 }
 
 async function saveSettings() {
-  if (busy.value) return;
+  if (busy.value || !savedSettings.value) return;
   busy.value = true;
   error.value = '';
   success.value = '';
@@ -109,10 +115,28 @@ async function saveSettings() {
     const maxUploadBytes =
         parseUploadLimit(uploadLimitValue.value, uploadLimitUnit.value);
     await saveAdminSettings({
+      ...savedSettings.value,
       localCapacityBytes: Math.round(capacityGiB.value * 1024 ** 3),
       offloadThreshold: threshold.value, maxUploadBytes
     });
     success.value = '存储与上传设置已保存';
+    await load()
+  } catch (e) {
+    fail(e)
+  } finally {
+    busy.value = false
+  }
+}
+
+async function saveAccessSettings() {
+  if (busy.value || !savedSettings.value) return;
+  busy.value = true;
+  error.value = '';
+  success.value = '';
+  try {
+    await saveAdminSettings({...savedSettings.value, allowAnonymousUploads: allowAnonymousUploads.value,
+      registrationEnabled: registrationEnabled.value});
+    success.value = '访问设置已保存';
     await load()
   } catch (e) {
     fail(e)
@@ -227,6 +251,9 @@ onUnmounted(speedTests.dispose)
       </button>
       <button role="tab" :aria-selected="tab === 'settings'" :class="{ active: tab === 'settings' }"
               @click="tab = 'settings'">容量设置
+      </button>
+      <button role="tab" :aria-selected="tab === 'access'" :class="{ active: tab === 'access' }"
+              @click="tab = 'access'">访问设置
       </button>
     </div>
     <div v-if="error && !providerOpen && !deleteProvider" class="notice error" role="alert">{{ error }}
@@ -353,6 +380,22 @@ onUnmounted(speedTests.dispose)
         <p class="page-note">已有文件的存储器无法删除。S3 凭据加密保存；NFS / SMB
           由服务器操作系统挂载，应用不保存共享账号密码。</p>
       </template>
+      <section v-if="tab === 'access'" class="panel settings-panel">
+        <div class="panel-header"><h2>上传与注册权限</h2></div>
+        <form class="settings-form access-settings-form" @submit.prevent="saveAccessSettings">
+          <div class="access-setting">
+            <label class="switch-label"><input v-model="allowAnonymousUploads" type="checkbox" :disabled="busy"
+                                               aria-describedby="anonymous-upload-help"><span class="switch"></span>允许匿名用户上传</label>
+            <p id="anonymous-upload-help">关闭后，上传文件需要先登录，已有匿名上传任务也会停止续传。已生成的分享链接仍可访问。</p>
+          </div>
+          <div class="access-setting">
+            <label class="switch-label"><input v-model="registrationEnabled" type="checkbox" :disabled="busy"
+                                               aria-describedby="registration-help"><span class="switch"></span>开放注册</label>
+            <p id="registration-help">关闭后，访客无法自行注册。已有账号仍可登录，管理员仍可在“用户管理”中创建账号。</p>
+          </div>
+          <button class="button button-primary" :disabled="busy">{{ busy ? '正在保存…' : '保存访问设置' }}<Check :size="17"/></button>
+        </form>
+      </section>
       <section v-if="tab === 'settings'" class="panel settings-panel">
         <div class="panel-header">
           <h2>存储容量与上传策略</h2>

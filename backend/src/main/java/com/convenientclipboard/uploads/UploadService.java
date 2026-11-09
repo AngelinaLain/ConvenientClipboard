@@ -54,6 +54,7 @@ public class UploadService {
                     throw new ApiException(HttpStatus.CONFLICT,"该上传任务的文件信息或分片清单已改变");
                 if(!existing.completed()) coordinator.locked(() -> {
                     requireActive(tasks.find(existing.id()));
+                    requireUploadAllowed(existing.ownerId(),settings.get());
                     tasks.touch(existing.id(),Instant.now().plus(ACTIVE_LIFETIME));
                     return null;
                 });
@@ -63,6 +64,7 @@ public class UploadService {
             return coordinator.locked(() -> {
                 if(files.find(request.id()).isPresent()) throw new ApiException(HttpStatus.CONFLICT,"该任务标识已用于保存文件，请创建新任务");
                 StorageSettings limits=settings.get();
+                requireUploadAllowed(principal==null?null:principal.id(),limits);
                 if(request.sizeBytes()>limits.maxUploadBytes()) throw tooLarge();
                 long available=limits.localCapacityBytes()-local.usedBytes()-coordinator.reservedUploadBytes(null);
                 if(request.sizeBytes()>available || request.sizeBytes()>local.usableBytes()) throw noSpace();
@@ -82,6 +84,7 @@ public class UploadService {
         String hash=tokenHash(token);
         return coordinator.uploadLocked(id,() -> {
             UploadTask task=access(id,hash,principal);
+            requireUploadAllowed(task.ownerId(),settings.get());
             if(index<0 || index>=task.totalChunks()) throw new ApiException(HttpStatus.BAD_REQUEST,"分片序号无效");
             long expected=task.chunkBytes(index);
             if(contentLength>expected) throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE,"分片超过预期大小");
@@ -108,6 +111,7 @@ public class UploadService {
         UploadStatus result=coordinator.uploadLocked(id,() -> {
             UploadTask task=access(id,hash,principal);
             if(task.completed()) return status(task);
+            requireUploadAllowed(task.ownerId(),settings.get());
             Runnable progress=progress(id);
             UploadStatus received=status(task,true,progress);
             if(received.receivedChunks().size()!=task.totalChunks())
@@ -122,6 +126,7 @@ public class UploadService {
                 return coordinator.locked(() -> {
                     requireActive(tasks.find(id));
                     StorageSettings limits=settings.get();
+                    requireUploadAllowed(task.ownerId(),limits);
                     if(task.sizeBytes()>limits.maxUploadBytes()) throw tooLarge();
                     if(files.find(id).isPresent()) throw new ApiException(HttpStatus.CONFLICT,"该任务标识已存在文件");
                     try {
@@ -175,6 +180,10 @@ public class UploadService {
     private void authorize(UploadTask task,String hash,AppPrincipal principal) {
         if(!MessageDigest.isEqual(task.tokenHash().getBytes(StandardCharsets.US_ASCII),hash.getBytes(StandardCharsets.US_ASCII))
                 || task.ownerId()!=null && (principal==null || !task.ownerId().equals(principal.id()))) throw notFound();
+    }
+    private static void requireUploadAllowed(UUID ownerId,StorageSettings limits) {
+        if(ownerId==null && Boolean.FALSE.equals(limits.allowAnonymousUploads()))
+            throw new ApiException(HttpStatus.FORBIDDEN,"匿名上传已关闭，请登录后上传文件");
     }
     private void requireActive(UploadTask task) {
         if(!"UPLOADING".equals(task.state()) && !task.completed() || !task.expiresAt().isAfter(Instant.now()))

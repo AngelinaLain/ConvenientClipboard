@@ -414,6 +414,27 @@ small {
     border-color: #6aab92
 }
 
+.upload-login-required {
+    min-height: 244px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    text-align: center;
+    border: 1.5px dashed var(--border);
+    background: #fbfdfb;
+    border-radius: 10px;
+    color: var(--teal)
+}
+
+.upload-login-required p {
+    margin: 0 0 4px;
+    font-size: 12px;
+    color: var(--muted)
+}
+
 .upload-illustration {
     display: grid;
     place-items: center;
@@ -1515,6 +1536,26 @@ td {
 
 .settings-form .field {
     margin: 24px 0
+}
+
+.access-setting {
+    margin: 24px 0
+}
+
+.access-setting .switch-label {
+    font-size: 14px;
+    font-weight: 600
+}
+
+.access-setting p {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.8
+}
+
+.access-settings-form > .button {
+    margin-top: 6px
 }
 
 .input-unit {

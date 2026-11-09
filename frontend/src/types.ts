@@ -20,6 +20,7 @@ export interface FileInfo {
 export interface PublicConfig {
     retentionDays: number;
     maxUploadBytes: number;
+    allowAnonymousUploads: boolean;
     registrationEnabled: boolean
 }
 
@@ -36,7 +37,9 @@ export interface Overview {
 export interface Settings {
     localCapacityBytes: number;
     offloadThreshold: number;
-    maxUploadBytes: number
+    maxUploadBytes: number;
+    allowAnonymousUploads: boolean;
+    registrationEnabled: boolean
 }
 
 export interface Provider {

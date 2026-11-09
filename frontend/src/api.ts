@@ -4,7 +4,7 @@ import type {User, PublicConfig, Settings} from './types'
 export const session = reactive<{ user: User | null; ready: boolean; config: PublicConfig }>({
     user: null,
     ready: false,
-    config: {retentionDays: 7, maxUploadBytes: 1073741824, registrationEnabled: true}
+    config: {retentionDays: 7, maxUploadBytes: 1073741824, allowAnonymousUploads: true, registrationEnabled: true}
 })
 type CsrfToken = { token: string; headerName: string }
 let csrfInFlight: Promise<CsrfToken> | null = null
@@ -76,6 +76,12 @@ export function applyUploadLimit(maxUploadBytes: number) {
     session.config = {...session.config, maxUploadBytes}
 }
 
+export function applyAdminSettings(settings: Settings) {
+    publicConfigRevision++
+    session.config = {...session.config, maxUploadBytes: settings.maxUploadBytes,
+        allowAnonymousUploads: settings.allowAnonymousUploads, registrationEnabled: settings.registrationEnabled}
+}
+
 export function refreshPublicConfig(): Promise<PublicConfig> {
     if (publicConfigInFlight) return publicConfigInFlight
     const revision = publicConfigRevision
@@ -92,7 +98,7 @@ export function refreshPublicConfig(): Promise<PublicConfig> {
 
 export async function saveAdminSettings(settings: Settings): Promise<Settings> {
     const saved = await api<Settings>('/admin/settings', {method: 'PUT', body: JSON.stringify(settings)})
-    applyUploadLimit(saved.maxUploadBytes)
+    applyAdminSettings(saved)
     return saved
 }
 

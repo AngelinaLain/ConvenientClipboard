@@ -38,7 +38,7 @@ function newId() {
 }
 const matches = (left: readonly string[], right: readonly string[]) => left.length === right.length && left.every((value, index) => value === right[index])
 
-export function useResumableUploads(owner: () => string | null) {
+export function useResumableUploads(owner: () => string | null, allowed: () => boolean = () => true) {
     const items = ref<UploadItem[]>([])
     const runners = new Map<string, AbortController>()
     const syncing = new Set<string>()
@@ -47,6 +47,16 @@ export function useResumableUploads(owner: () => string | null) {
     let pollController = new AbortController()
     const active = computed(() => items.value.some(item => ['hashing', 'checking', 'uploading', 'merging', 'cancelling'].includes(item.stage)))
     const pending = computed(() => items.value.filter(item => ['queued', 'paused', 'error'].includes(item.stage) && item.source && !item.record?.cancelled))
+
+    function requireAllowed() {
+        if (!allowed()) throw new Error('匿名上传已关闭，请登录后上传')
+    }
+    function blocked(item: UploadItem) {
+        if (allowed()) return false
+        item.stage = 'error'
+        item.error = '匿名上传已关闭，请登录后上传'
+        return true
+    }
 
     function alive(item: UploadItem, controller: AbortController, version: number) {
         checkAbort(controller.signal)
@@ -149,6 +159,7 @@ export function useResumableUploads(owner: () => string | null) {
 
     async function start(item: UploadItem) {
         if (disposed || item.ownerId !== owner() || runners.has(item.id) || item.stage === 'done' || item.record?.cancelled) return
+        if (blocked(item)) return
         if (!item.source) { item.stage = 'needs-file'; return }
         const controller = new AbortController()
         const version = scope
@@ -172,6 +183,7 @@ export function useResumableUploads(owner: () => string | null) {
                 if (renewing || controller.signal.aborted) return
                 renewing = true
                 try {
+                    requireAllowed()
                     const status = await createUpload(record, leaseController!.signal)
                     if (!leaseActive || leaseController?.signal.aborted) return
                     alive(item, controller, version)
@@ -201,6 +213,7 @@ export function useResumableUploads(owner: () => string | null) {
                 if (previous) {
                     accept(item, previous)
                     if (previous.state === 'COMPLETED') return
+                    requireAllowed()
                     const renewed = await createUpload(item.record, controller.signal)
                     alive(item, controller, version)
                     accept(item, renewed)
@@ -223,6 +236,7 @@ export function useResumableUploads(owner: () => string | null) {
                     await release(item)
                     return
                 }
+                requireAllowed()
                 status = await createUpload(record, controller.signal)
             }
             alive(item, controller, version)
@@ -233,6 +247,7 @@ export function useResumableUploads(owner: () => string | null) {
             for (let index = 0; index < status.totalChunks; index++) {
                 alive(item, controller, version)
                 if (status.receivedChunks.includes(index)) continue
+                requireAllowed()
                 item.stage = 'uploading'
                 const body = item.source!.slice(index * UPLOAD_CHUNK_SIZE, Math.min(item.size, (index + 1) * UPLOAD_CHUNK_SIZE))
                 status = await uploadRequest<UploadStatus>(record, `/chunks/${index}`, {
@@ -244,6 +259,7 @@ export function useResumableUploads(owner: () => string | null) {
                 if (status.state === 'COMPLETED') return
             }
             alive(item, controller, version)
+            requireAllowed()
             item.stage = 'merging'
             status = await uploadRequest<UploadStatus>(record, '/complete', {method: 'POST'}, controller.signal)
             alive(item, controller, version)
@@ -365,6 +381,7 @@ export function useResumableUploads(owner: () => string | null) {
                 const status = await uploadRequest<UploadStatus>(record, '', {}, pollController.signal)
                 if (disposed || version !== scope || !items.value.includes(item) || runners.has(record.id) || item.record?.cancelled) continue
                 accept(item, status)
+                if (status.state !== 'COMPLETED' && blocked(item)) continue
                 if (status.state !== 'COMPLETED' && ['checking', 'error'].includes(item.stage)) {
                     item.stage = record.paused ? 'paused' : 'needs-file'
                     item.error = ''
@@ -412,6 +429,7 @@ export function useResumableUploads(owner: () => string | null) {
         }
         for (const item of [...items.value]) {
             if (disposed || scope !== version) return
+            if (!item.result && !item.record?.cancelled && blocked(item)) continue
             if (!item.result && item.source && item.stage !== 'error' && !item.record?.paused && !item.record?.cancelled) await start(item)
         }
     }

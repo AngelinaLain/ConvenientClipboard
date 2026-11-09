@@ -2,6 +2,7 @@ package com.convenientclipboard.auth;
 
 import com.convenientclipboard.common.ApiException;
 import com.convenientclipboard.storage.SettingsService;
+import com.convenientclipboard.storage.StorageSettings;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -59,12 +60,17 @@ public class AuthController {
 
     @GetMapping("/public/config")
     public Map<String, Object> publicConfig() {
-        return Map.of("retentionDays", 7, "maxUploadBytes", settings.get().maxUploadBytes(), "registrationEnabled", true);
+        StorageSettings current = settings.get();
+        return Map.of("retentionDays", 7, "maxUploadBytes", current.maxUploadBytes(),
+                "allowAnonymousUploads", !Boolean.FALSE.equals(current.allowAnonymousUploads()),
+                "registrationEnabled", !Boolean.FALSE.equals(current.registrationEnabled()));
     }
 
     @PostMapping("/auth/register")
     @ResponseStatus(HttpStatus.CREATED)
     public AppPrincipal register(@Valid @RequestBody Credentials input, HttpServletRequest req, HttpServletResponse res) {
+        if (Boolean.FALSE.equals(settings.get().registrationEnabled()))
+            throw new ApiException(HttpStatus.FORBIDDEN, "当前未开放注册，请联系管理员创建账号");
         limiter.check("register", req.getRemoteAddr(), 10, Duration.ofHours(1));
         PasswordPolicy.validate(input.password());
         try {

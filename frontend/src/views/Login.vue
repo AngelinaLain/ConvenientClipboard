@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import {computed, ref} from 'vue'
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {ArrowRight, ShieldCheck} from 'lucide-vue-next'
-import {authenticate, logout, session} from '../api'
+import {authenticate, logout, refreshPublicConfig, session} from '../api'
 
 const props = defineProps<{ admin?: boolean }>();
 const route = useRoute();
@@ -15,11 +15,32 @@ const error = ref('')
 const title = computed(() => props.admin ? '管理后台登录' : mode.value === 'login' ? '欢迎回来' : '创建你的账号')
 const passwordReset = computed(() => route.query.reauth === 'password-reset')
 
+watch(() => session.config.registrationEnabled, enabled => {
+  if (!enabled) mode.value = 'login'
+}, {flush: 'sync'})
+
+async function refreshConfig() {
+  try {
+    await refreshPublicConfig()
+  } catch (e) {
+    error.value = `无法读取注册设置：${(e as Error).message}`
+  }
+}
+onMounted(() => {
+  void refreshConfig()
+  window.addEventListener('focus', refreshConfig)
+})
+onUnmounted(() => window.removeEventListener('focus', refreshConfig))
+
 async function submit() {
+  if (busy.value) return;
   busy.value = true;
   error.value = '';
   try {
-    await authenticate(props.admin ? 'login' : mode.value, username.value.trim(), password.value);
+    const requestedMode = props.admin ? 'login' : mode.value;
+    if (requestedMode === 'register' && !(await refreshPublicConfig()).registrationEnabled)
+      throw new Error('当前已关闭注册，请使用已有账号登录或联系管理员');
+    await authenticate(requestedMode, username.value.trim(), password.value);
     if (props.admin && session.user?.role !== 'ADMIN') {
       await logout();
       throw new Error('此账号没有管理员权限，请使用管理员账号')
@@ -46,6 +67,7 @@ async function submit() {
         <button :class="{ active: mode === 'login' }" @click="mode = 'login'; error = ''">登录</button>
         <button :class="{ active: mode === 'register' }" @click="mode = 'register'; error = ''">注册</button>
       </div>
+      <p v-if="!admin && !session.config.registrationEnabled" class="notice info" role="status">当前已关闭注册，请使用已有账号登录或联系管理员。</p>
       <div v-if="passwordReset" class="notice success" role="status">密码已重置，请使用新密码重新登录。</div>
       <form @submit.prevent="submit"><label class="field">用户名<input v-model="username" required
                                                                        autocomplete="username" minlength="3"

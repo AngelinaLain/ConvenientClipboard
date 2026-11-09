@@ -212,6 +212,129 @@ describe('resumable upload lifecycle', () => {
     })
 })
 
+describe('anonymous upload access settings', () => {
+    it('blocks a new anonymous upload and resumes it after uploads are enabled again', async () => {
+        let allowed = false
+        const list = useResumableUploads(() => null, () => allowed)
+        const item = list.add(source(), false)
+        const hash = vi.spyOn(chunkHash, 'fileChunkHashes')
+        await list.startAll()
+        expect(item.stage).toBe('error')
+        expect(item.error).toBe('匿名上传已关闭，请登录后上传')
+        expect(hash).not.toHaveBeenCalled()
+        expect(request).not.toHaveBeenCalled()
+        expect(memory.records.size).toBe(0)
+
+        request.mockImplementation(async path => {
+            if (path === `/uploads/${item.id}`) throw new ApiError('不存在', 404)
+            if (path === '/uploads') return status(item.id)
+            if (String(path).includes('/chunks/')) {
+                const index = Number(String(path).split('/').at(-1))
+                return status(item.id, Array.from({length: index + 1}, (_, value) => value))
+            }
+            return status(item.id, [0, 1, 2], true)
+        })
+        allowed = true
+        await list.startAll()
+        expect(item.stage).toBe('done')
+        expect(item.result?.id).toBe(item.id)
+        expect(item.error).toBe('')
+    })
+
+    it('queries cached anonymous tasks without resuming writes and still lets them be cancelled', async () => {
+        const saved = await record()
+        memory.records.set(saved.id, saved)
+        memory.files.set(saved.id, source())
+        request.mockResolvedValue(status(saved.id, [0]))
+        const list = useResumableUploads(() => null, () => false)
+        await list.restore()
+        const item = list.items.value[0]!
+        expect(item.savedBytes).toBe(4)
+        expect(item.error).toBe('匿名上传已关闭，请登录后上传')
+        expect(item.source).toBeDefined()
+        expect(request).toHaveBeenCalledTimes(1)
+        expect(request.mock.calls[0]![1]?.method).toBeUndefined()
+        expect(memory.records.has(saved.id)).toBe(true)
+
+        await list.attach(item, source())
+        expect(request).toHaveBeenCalledTimes(1)
+        await list.poll()
+        expect(request).toHaveBeenCalledTimes(2)
+        expect(request.mock.calls.every(call => !call[1]?.method || call[1]?.method === 'GET')).toBe(true)
+        expect(item.error).toBe('匿名上传已关闭，请登录后上传')
+        await list.cancel(item)
+        expect(request.mock.calls.at(-1)![1]?.method).toBe('DELETE')
+        expect(list.items.value).toEqual([])
+        expect(memory.records.has(saved.id)).toBe(false)
+        expect(memory.files.has(saved.id)).toBe(false)
+    })
+
+    it('recovers completed anonymous results while uploads are disabled', async () => {
+        const saved = await record()
+        memory.records.set(saved.id, saved)
+        request.mockResolvedValue(status(saved.id, [0, 1, 2], true))
+        const list = useResumableUploads(() => null, () => false)
+        await list.restore()
+        expect(list.items.value[0]!.stage).toBe('done')
+        expect(list.items.value[0]!.result?.shareUrl).toBe(`/s/${saved.id}`)
+        expect(request).toHaveBeenCalledTimes(1)
+        expect(request.mock.calls[0]![1]?.method).toBeUndefined()
+    })
+
+    it('rechecks access before renewing an existing task after its status response', async () => {
+        const saved = await record()
+        memory.records.set(saved.id, {...saved, paused: true})
+        memory.files.set(saved.id, source())
+        let allowed = true
+        request.mockResolvedValue(status(saved.id, [0]))
+        const list = useResumableUploads(() => null, () => allowed)
+        await list.restore()
+        request.mockImplementation(async () => { allowed = false; return status(saved.id, [0]) })
+        await list.start(list.items.value[0]!)
+        expect(request.mock.calls.every(call => !call[1]?.method || call[1]?.method === 'GET')).toBe(true)
+        expect(list.items.value[0]!.error).toBe('匿名上传已关闭，请登录后上传')
+    })
+
+    it.each([0, 2])('stops before later writes when access closes after chunk %i', async closedAfter => {
+        let allowed = true
+        const list = useResumableUploads(() => null, () => allowed)
+        const item = list.add(source(), false)
+        request.mockImplementation(async path => {
+            if (path === `/uploads/${item.id}`) throw new ApiError('不存在', 404)
+            if (path === '/uploads') return status(item.id)
+            const index = Number(String(path).split('/').at(-1))
+            if (index === closedAfter) allowed = false
+            return status(item.id, Array.from({length: index + 1}, (_, value) => value))
+        })
+        await list.start(item)
+        expect(request.mock.calls.filter(call => call[1]?.method === 'PUT')).toHaveLength(closedAfter + 1)
+        expect(request.mock.calls.some(call => String(call[0]).endsWith('/complete'))).toBe(false)
+        expect(item.error).toBe('匿名上传已关闭，请登录后上传')
+        expect(item.stage).toBe('error')
+        expect(item.result).toBeUndefined()
+    })
+
+    it('continues logged-in tasks when anonymous uploads are disabled', async () => {
+        const saved = await record(undefined, 'owner-a')
+        memory.records.set(saved.id, saved)
+        memory.files.set(saved.id, source())
+        const owner = 'owner-a'
+        const anonymousUploads = false
+        request.mockImplementation(async path => {
+            if (String(path).endsWith('/complete')) return status(saved.id, [0, 1, 2], true)
+            if (String(path).includes('/chunks/')) {
+                const index = Number(String(path).split('/').at(-1))
+                return status(saved.id, Array.from({length: index + 1}, (_, value) => value))
+            }
+            return status(saved.id, [0])
+        })
+        const list = useResumableUploads(() => owner, () => !!owner || anonymousUploads)
+        await list.restore()
+        expect(list.items.value[0]!.stage).toBe('done')
+        expect(list.items.value[0]!.result?.id).toBe(saved.id)
+    })
+})
+
 describe('bounded retries for idempotent upload requests', () => {
     it('retries a lost response with the same task and token, then stops after three attempts', async () => {
         const saved = await record()

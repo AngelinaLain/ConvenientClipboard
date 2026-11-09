@@ -56,6 +56,8 @@ public class FileService {
         try {
             file = coordinator.locked(() -> {
                 StorageSettings limits = settings.get();
+                if (principal == null && Boolean.FALSE.equals(limits.allowAnonymousUploads()))
+                    throw new ApiException(HttpStatus.FORBIDDEN, "匿名上传已关闭，请登录后上传文件");
                 long maximum = limits.maxUploadBytes();
                 if (upload.getSize() > maximum)
                     throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "文件超过当前单次上传限制");
