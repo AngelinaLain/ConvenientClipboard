@@ -49,7 +49,7 @@ onUnmounted(() => {
           <p>链接可能已过期或不存在。</p>
           <button class="text-button" @click="load(String(route.params.id))">重新读取</button>
         </template>
-        <RouterLink v-if="shared" to="/clipboard" class="button button-outline">新建粘贴板</RouterLink>
+        <RouterLink v-if="shared" to="/zt" class="button button-outline">新建粘贴板</RouterLink>
         <button v-else class="button button-outline" @click="reset">新建粘贴板</button>
       </div>
 
@@ -66,7 +66,7 @@ onUnmounted(() => {
         </div>
         <p v-if="copyMessage" :class="['clipboard-copy-feedback', {'inline-error': copyFailed}]" role="status">{{ copyMessage }}</p>
         <div class="clipboard-actions">
-          <RouterLink v-if="shared" to="/clipboard" class="text-link">我也要分享文本 →</RouterLink>
+          <RouterLink v-if="shared" to="/zt" class="text-link">我也要分享文本 →</RouterLink>
           <button v-else class="text-button" @click="reset">新建粘贴板</button>
           <div class="clipboard-action-buttons">
             <a v-if="!shared" :href="entry.shareUrl" target="_blank" rel="noopener noreferrer" class="button button-outline">打开链接<ArrowUpRight :size="16"/></a>
@@ -87,7 +87,7 @@ onUnmounted(() => {
                    :aria-describedby="customIdError ? 'clipboard-custom-help clipboard-custom-error' : 'clipboard-custom-help'">
           </label>
           <p id="clipboard-custom-help" class="clipboard-custom-help">留空自动生成随机链接。自定义名称为 3–64 位英文字母、数字、下划线或短横线，以字母或数字开头，区分大小写；有效 10 分钟，到期后可重新使用。</p>
-          <p v-if="customId.trim()" class="clipboard-link-preview">链接预览 <span>/clipboard/{{ customId.trim() }}</span></p>
+          <p v-if="customId.trim()" class="clipboard-link-preview">链接预览 <span>/zt/{{ customId.trim() }}</span></p>
           <p v-if="customIdError" id="clipboard-custom-error" class="clipboard-custom-error" role="alert">{{ customIdError }}</p>
         </div>
         <div class="clipboard-retention"><Timer :size="17"/><span>固定保留 <strong>10 分钟</strong><small>从保存成功起计时，到期自动销毁，所有人可访问。</small></span></div>

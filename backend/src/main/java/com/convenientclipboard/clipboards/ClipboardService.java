@@ -62,7 +62,7 @@ public class ClipboardService {
             for (int attempt = 0; attempt < 3; attempt++) {
                 String id = requestedId.isEmpty() ? randomId() : requestedId;
                 var createdAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
-                var info = new ClipboardInfo(id, content, publicBaseUrl + "/clipboard/" + id,
+                var info = new ClipboardInfo(id, content, shareUrl(id),
                         createdAt, createdAt.plus(LIFETIME));
                 // Claim and absolute expiry are one atomic Redis operation. Conflicts never change the existing TTL.
                 Long saved = redis.execute(SAVE, List.of(KEY_PREFIX + id), json.writeValueAsString(info),
@@ -89,10 +89,14 @@ public class ClipboardService {
                 // Redis expires the key atomically. Deleting after GET could remove a newer clipboard reusing this ID.
                 throw missing();
             }
-            return info;
+            return new ClipboardInfo(info.id(), info.content(), shareUrl(info.id()), info.createdAt(), info.expiresAt());
         } catch (DataAccessException | JsonProcessingException ex) {
             throw unavailable();
         }
+    }
+
+    private String shareUrl(String id) {
+        return publicBaseUrl + "/zt/" + id;
     }
 
     private String randomId() {

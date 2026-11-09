@@ -41,7 +41,7 @@ docker compose up -d --build
 | 入口 | 地址 |
 | --- | --- |
 | 上传前台 | http://localhost:8088 |
-| 粘贴板 | http://localhost:8088/clipboard |
+| 粘贴板 | http://localhost:8088/zt |
 | 用户登录/注册 | http://localhost:8088/login |
 | 我的文件 | http://localhost:8088/files |
 | 管理员登录 | http://localhost:8088/admin/login |

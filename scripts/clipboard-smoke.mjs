@@ -46,7 +46,7 @@ await run('anonymous save preserves text and fixes lifetime at ten minutes', asy
   assert.equal(clipboard.content, content);
   assert.equal(Date.parse(clipboard.expiresAt) - Date.parse(clipboard.createdAt), 600_000);
   assert.ok(Math.abs(Date.parse(clipboard.createdAt) - Date.now()) < 30_000);
-  assert.equal(new URL(clipboard.shareUrl).pathname, `/clipboard/${clipboard.id}`);
+  assert.equal(new URL(clipboard.shareUrl).pathname, `/zt/${clipboard.id}`);
 });
 await run('another visitor can read without cookies and reads do not extend expiry', async () => {
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -57,7 +57,7 @@ await run('another visitor can read without cookies and reads do not extend expi
     assert.equal(shared.content, content);
     assert.equal(shared.expiresAt, clipboard.expiresAt);
   }
-  const page = await fetch(`${base}/clipboard/${encodeURIComponent(clipboard.id)}`);
+  const page = await fetch(`${base}/zt/${encodeURIComponent(clipboard.id)}`);
   assert.equal(page.status, 200);
   assert.match(page.headers.get('Content-Type') || '', /text\/html/);
 });
@@ -83,7 +83,7 @@ await run('custom links preserve their name and reject duplicates without replac
   assert.equal(response.status, 201, await response.clone().text());
   const original = await response.json();
   assert.equal(original.id, customId);
-  assert.equal(new URL(original.shareUrl).pathname, `/clipboard/${customId}`);
+  assert.equal(new URL(original.shareUrl).pathname, `/zt/${customId}`);
   assert.equal(Date.parse(original.expiresAt) - Date.parse(original.createdAt), 600_000);
   const duplicate = await create('This must not replace the original text.', customId);
   assert.equal(duplicate.status, 409);

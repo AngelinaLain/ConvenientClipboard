@@ -51,7 +51,7 @@ class ClipboardServiceTest {
         assertNotEquals(first.id(), second.id());
         assertTrue(first.id().matches("[A-Za-z0-9_-]{32}"));
         assertEquals(content, first.content());
-        assertEquals("https://files.example/clipboard/" + first.id(), first.shareUrl());
+        assertEquals("https://files.example/zt/" + first.id(), first.shareUrl());
         assertEquals(NOW, first.createdAt());
         assertEquals(NOW.plusSeconds(600), first.expiresAt());
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
@@ -62,7 +62,7 @@ class ClipboardServiceTest {
 
     @Test
     void readsDoNotRefreshTheDeadlineAndExpiryIsEnforcedAtExactlyTenMinutes() throws Exception {
-        ClipboardInfo info = new ClipboardInfo(ID, "text", "https://files.example/clipboard/" + ID, NOW, NOW.plusSeconds(600));
+        ClipboardInfo info = new ClipboardInfo(ID, "text", "https://files.example/zt/" + ID, NOW, NOW.plusSeconds(600));
         when(values.get("clipboard:content:" + ID)).thenReturn(json.writeValueAsString(info));
         when(clock.instant()).thenReturn(NOW.plusSeconds(599));
         assertEquals(info, service.get(ID));
@@ -113,7 +113,7 @@ class ClipboardServiceTest {
     void customIdsAreTrimmedAndCaseIsPreserved() {
         ClipboardInfo info = service.create("text", "  Release_2026-v1  ");
         assertEquals("Release_2026-v1", info.id());
-        assertEquals("https://files.example/clipboard/Release_2026-v1", info.shareUrl());
+        assertEquals("https://files.example/zt/Release_2026-v1", info.shareUrl());
         assertEquals("Abc", service.create("text", "Abc").id());
         assertEquals("abc", service.create("text", "abc").id());
         assertEquals(64, service.create("text", "a".repeat(64)).id().length());
@@ -157,7 +157,8 @@ class ClipboardServiceTest {
         for (String id : new String[] {"abc", "Release_2026-v1", "a".repeat(64), "_" + "a".repeat(31), "-" + "a".repeat(31)}) {
             ClipboardInfo info = new ClipboardInfo(id, "text", "https://files.example/clipboard/" + id, NOW, NOW.plusSeconds(600));
             when(values.get("clipboard:content:" + id)).thenReturn(json.writeValueAsString(info));
-            assertEquals(info, service.get(id));
+            assertEquals(new ClipboardInfo(id, info.content(), "https://files.example/zt/" + id,
+                    info.createdAt(), info.expiresAt()), service.get(id));
         }
     }
 }

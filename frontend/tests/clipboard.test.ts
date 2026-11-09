@@ -11,7 +11,7 @@ const copyText = vi.mocked(copy)
 const start = Date.parse('2026-11-09T01:00:00Z')
 const saved = (extra: Partial<ClipboardInfo> = {}): ClipboardInfo => ({
     id: 'clipboard-1', content: '  中文\n<script>alert(1)</script>\t🙂  ',
-    shareUrl: 'http://localhost:8088/clipboard/clipboard-1',
+    shareUrl: 'http://localhost:8088/zt/clipboard-1',
     createdAt: new Date(start).toISOString(), expiresAt: new Date(start + 600000).toISOString(), ...extra
 })
 

@@ -40,7 +40,7 @@ class ClipboardControllerTest {
     @Test
     void anyoneCanCreateAndReadTextWithoutAnAccountOrFileUploadPermission() throws Exception {
         var now = Instant.parse("2026-11-09T01:00:00Z");
-        var info = new ClipboardInfo(ID, "<b>原样文本</b>\nline 2", "https://files.example/clipboard/" + ID, now, now.plusSeconds(600));
+        var info = new ClipboardInfo(ID, "<b>原样文本</b>\nline 2", "https://files.example/zt/" + ID, now, now.plusSeconds(600));
         when(service.create(info.content(), null)).thenReturn(info);
         when(service.get(ID)).thenReturn(info);
         mvc.perform(post("/api/clipboards").with(csrf()).contentType("application/json")
@@ -63,7 +63,7 @@ class ClipboardControllerTest {
     @Test
     void anonymousUsersCanCreateCustomLinksAndReceiveValidationAndConflictMessages() throws Exception {
         var now = Instant.parse("2026-11-09T01:00:00Z");
-        var info = new ClipboardInfo("Demo-2026", "text", "https://files.example/clipboard/Demo-2026", now, now.plusSeconds(600));
+        var info = new ClipboardInfo("Demo-2026", "text", "https://files.example/zt/Demo-2026", now, now.plusSeconds(600));
         when(service.create("text", " Demo-2026 ")).thenReturn(info);
         when(service.get(info.id())).thenReturn(info);
         mvc.perform(post("/api/clipboards").with(csrf()).contentType("application/json")

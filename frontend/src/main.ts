@@ -18,7 +18,9 @@ const router = createRouter({
             meta: {auth: true}
         },
         {path: '/s/:token', component: Share},
-        {path: '/clipboard', component: Clipboard}, {path: '/clipboard/:id', component: Clipboard},
+        {path: '/zt', component: Clipboard}, {path: '/zt/:id', component: Clipboard},
+        {path: '/clipboard', redirect: to => ({path: '/zt', query: to.query, hash: to.hash})},
+        {path: '/clipboard/:id', redirect: to => ({path: `/zt/${encodeURIComponent(String(to.params.id))}`, query: to.query, hash: to.hash})},
         {path: '/admin/login', component: Login, props: {admin: true}},
         {path: '/admin', component: Admin, meta: {admin: true}}, {path: '/:pathMatch(.*)*', redirect: '/'},
     ]
