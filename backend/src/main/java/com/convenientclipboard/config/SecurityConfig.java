@@ -42,8 +42,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/error", "/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/public/**", "/api/shares/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register", "/api/files").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/auth/csrf", "/api/public/**", "/api/shares/**", "/api/clipboards/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register", "/api/files", "/api/clipboards").permitAll()
                         .requestMatchers("/api/uploads", "/api/uploads/**").permitAll()
                         .requestMatchers("/api/**").authenticated().anyRequest().denyAll())
                 .exceptionHandling(e -> e

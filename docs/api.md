@@ -21,6 +21,8 @@
 | DELETE `/files/{id}` | 所有者或管理员 + CSRF | 删除对象和元数据，成功204 |
 | GET `/shares/{token}` | 公开 | 共享元数据 |
 | GET `/shares/{token}/download` | 公开 | 附件下载 |
+| POST `/clipboards` | 公开 + CSRF | `{content,customId?}` 保存纯文本，可选自定义链接，返回201和固定10分钟分享信息 |
+| GET `/clipboards/{id}` | 公开 | 读取未过期的文本及分享信息，不续期 |
 | GET `/admin/overview` | 管理员 | 本地/远端字节、文件计数、配置 |
 | GET / PUT `/admin/settings` | 管理员，PUT需CSRF | `{localCapacityBytes,offloadThreshold,maxUploadBytes,allowAnonymousUploads,registrationEnabled}` |
 | GET `/admin/files?page=0&size=20&query=&location=&retention=` | 管理员 | 全部文件分页、关键词检索与组合筛选，包含 ownerName |
@@ -65,6 +67,16 @@
 `allowAnonymousUploads` 与 `registrationEnabled` 为布尔值，默认均为 `true`，通过 `/admin/settings` 保存到数据库并立即生效；旧客户端省略这些字段时保留当前值。GET `/public/config` 同时返回这两个当前值，供上传页与登录页显示对应入口。关闭匿名上传后，游客不能使用旧整文件接口或新建分片任务；已有匿名任务也不能续租、写片或提交完成，即使持令牌的人后来登录也不能改变该任务的匿名身份，但仍可查询原结果或取消未完成任务。关闭注册后，POST `/auth/register` 返回403，已有用户登录和管理员创建账号不受影响。开关不影响已保存文件的分享与下载。
 
 常见状态：400参数错误、401未登录、403权限/CSRF拒绝、404不存在、409冲突、410分享过期、413上传超限、429认证限流、502远端删除失败、503服务暂不可用、507本地空间不足。
+
+## 临时粘贴板
+
+POST `/clipboards` 请求为 `{ "content": "需要分享的文本" }`。文本不能为空或纯空白，最多100000个UTF-16代码单元（与浏览器的`maxlength`计数一致），原样保留空格、换行和特殊字符。JSON请求体另有1MiB上限，超限返回413，包括无Content-Length的请求。创建与读取均无需登录，与文件匿名上传、开放注册设置无关；创建仍使用上文的CSRF防护。
+
+创建和读取均返回 `{id,content,shareUrl,createdAt,expiresAt}`，日期为ISO 8601。`shareUrl` 使用 `APP_PUBLIC_BASE_URL`，页面路径为 `/clipboard/{id}`。服务端固定 `expiresAt = createdAt + 10分钟`，不接受自定义有效期或永久保存。Redis保存文本并设置自动过期，读取不会续期；到期或不存在返回404。文本不写入文件存储或PostgreSQL，不计入文件容量和管理列表。
+
+可选字段 `customId` 指定链接名称，例如 `{ "content": "会议记录", "customId": "team-note" }` 生成 `/clipboard/team-note`。名称忽略首尾空白，区分大小写，长度3–64位，以英文字母或数字开头，其余允许英文字母、数字、下划线和短横线。省略、`null`或纯空白时生成随机链接，非法名称返回400。同名链接在原10分钟有效期内再次创建返回409并提示换一个名称，旧内容和期限保持不变；Redis原子占用防止并发覆盖，到期后名称可再次使用。自定义名称与随机链接共用同一命名空间，已有随机链接继续有效。
+
+接口响应使用`Cache-Control: no-store`。页面只展示纯文本，可复制内容和分享链接；到期后清空已展示的内容及链接。已被访客主动复制或保存到其他位置的副本不受服务端期限控制。
 
 ## 分片上传协议
 

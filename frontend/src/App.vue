@@ -27,6 +27,7 @@ async function signOut() {
       </RouterLink>
       <nav aria-label="主导航">
         <RouterLink to="/" class="nav-link">上传文件</RouterLink>
+        <RouterLink to="/clipboard" class="nav-link" :class="{'clipboard-nav-active': $route.path.startsWith('/clipboard/')}">粘贴板</RouterLink>
         <RouterLink v-if="session.user" to="/files" class="nav-link">我的文件</RouterLink>
         <RouterLink v-if="session.user?.role === 'ADMIN'" to="/admin" class="nav-link admin-link">
           <ShieldCheck :size="15"/>

@@ -5,6 +5,7 @@ import Upload from './views/Upload.vue'
 import Login from './views/Login.vue'
 import Files from './views/Files.vue'
 import Share from './views/Share.vue'
+import Clipboard from './views/Clipboard.vue'
 import Admin from './views/Admin.vue'
 import {initialize, session} from './api'
 import './style.css'
@@ -16,7 +17,9 @@ const router = createRouter({
             component: Files,
             meta: {auth: true}
         },
-        {path: '/s/:token', component: Share}, {path: '/admin/login', component: Login, props: {admin: true}},
+        {path: '/s/:token', component: Share},
+        {path: '/clipboard', component: Clipboard}, {path: '/clipboard/:id', component: Clipboard},
+        {path: '/admin/login', component: Login, props: {admin: true}},
         {path: '/admin', component: Admin, meta: {admin: true}}, {path: '/:pathMatch(.*)*', redirect: '/'},
     ]
 })

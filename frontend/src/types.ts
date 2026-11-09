@@ -4,6 +4,14 @@ export interface User {
     role: 'ADMIN' | 'USER'
 }
 
+export interface ClipboardInfo {
+    id: string;
+    content: string;
+    shareUrl: string;
+    createdAt: string;
+    expiresAt: string
+}
+
 export interface FileInfo {
     id: string;
     originalName: string;

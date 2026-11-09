@@ -159,7 +159,7 @@ small {
     gap: 6px
 }
 
-.nav-link.router-link-exact-active {
+.nav-link.router-link-exact-active, .nav-link.clipboard-nav-active {
     color: var(--teal);
     font-weight: 650
 }
@@ -2711,6 +2711,267 @@ td {
     width: 88px;
     flex-shrink: 0;
     padding: 12px 10px
+}
+
+.clipboard-page {
+    max-width: 792px;
+    padding-top: 80px;
+    padding-bottom: 36px
+}
+
+.clipboard-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 17px;
+    padding: 26px;
+    box-shadow: 0 10px 40px #183b3110
+}
+
+.clipboard-heading {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    margin-bottom: 27px
+}
+
+.clipboard-icon {
+    width: 46px;
+    height: 46px;
+    border-radius: 12px;
+    background: var(--soft);
+    color: var(--teal);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0
+}
+
+.clipboard-heading h1 {
+    font-size: 22px;
+    letter-spacing: -.4px
+}
+
+.clipboard-heading p {
+    margin-top: 5px;
+    font-size: 12px;
+    color: var(--muted)
+}
+
+.clipboard-field {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 550;
+    color: #4b6660
+}
+
+.clipboard-textarea,
+.clipboard-field input {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid #d7e4dd;
+    border-radius: 9px;
+    padding: 14px;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.8;
+    font-weight: 400;
+    color: var(--ink);
+    background: #fbfdfb
+}
+
+.clipboard-textarea {
+    display: block;
+    margin-top: 10px;
+    min-height: 266px;
+    resize: vertical;
+    tab-size: 4
+}
+
+.clipboard-field > .clipboard-textarea {
+    margin-top: 0
+}
+
+.clipboard-textarea::placeholder {
+    color: #9aaba2
+}
+
+.clipboard-textarea:focus-visible,
+.clipboard-field input:focus-visible {
+    outline: 2px solid #a1c9b9;
+    outline-offset: 2px
+}
+
+.clipboard-limit {
+    text-align: right;
+    color: var(--muted);
+    font-size: 10px;
+    margin-top: 7px;
+    font-variant-numeric: tabular-nums
+}
+
+.clipboard-retention {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    color: #6b8478;
+    font-size: 12px;
+    margin: 20px 0
+}
+
+.clipboard-custom-link {
+    margin-top: 20px
+}
+
+.clipboard-custom-link .clipboard-field {
+    display: block
+}
+
+.clipboard-custom-link .clipboard-field > .muted {
+    margin-left: 7px;
+    font-size: 10px;
+    font-weight: 400
+}
+
+.clipboard-custom-link input {
+    display: block;
+    margin-top: 10px
+}
+
+.clipboard-custom-link input[aria-invalid="true"] {
+    border-color: #c68d82
+}
+
+.clipboard-custom-help,
+.clipboard-link-preview,
+.clipboard-custom-error {
+    margin-top: 8px;
+    font-size: 10px;
+    line-height: 1.8;
+    color: var(--muted);
+    overflow-wrap: anywhere
+}
+
+.clipboard-link-preview span {
+    color: var(--teal);
+    margin-left: 6px
+}
+
+.clipboard-custom-error {
+    color: #b26c60;
+    font-size: 12px
+}
+
+.clipboard-retention svg {
+    flex-shrink: 0
+}
+
+.clipboard-retention strong {
+    color: #396457;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums
+}
+
+.clipboard-retention small {
+    display: block;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.7
+}
+
+.clipboard-actions,
+.clipboard-action-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap
+}
+
+.clipboard-actions {
+    margin-top: 23px;
+    padding-top: 20px;
+    border-top: 1px solid #edf1ed;
+    justify-content: space-between
+}
+
+.clipboard-actions .muted {
+    font-size: 10px
+}
+
+.clipboard-link-result {
+    margin-top: 23px
+}
+
+.clipboard-saved {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--teal);
+    font-size: 12px;
+    margin-bottom: 14px
+}
+
+.clipboard-copy-feedback {
+    margin-top: 14px;
+    color: var(--teal);
+    font-size: 12px
+}
+
+.clipboard-copy-feedback.inline-error {
+    color: #b26c60
+}
+
+.clipboard-unavailable {
+    padding: 35px 0
+}
+
+.clipboard-unavailable p {
+    overflow-wrap: anywhere
+}
+
+@media (max-width: 540px) {
+    .site-header {
+        height: auto;
+        min-height: 112px;
+        padding: 18px;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 19px
+    }
+
+    .site-header nav {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 12px 18px
+    }
+
+    .clipboard-page {
+        padding-top: 28px
+    }
+
+    .clipboard-card {
+        padding: 20px 18px
+    }
+
+    .clipboard-heading {
+        align-items: flex-start
+    }
+
+    .clipboard-heading p {
+        font-size: 11px
+    }
+
+    .clipboard-textarea {
+        min-height: 240px;
+        font-size: 16px
+    }
+
+    .clipboard-actions .button {
+        padding: 10px 12px;
+        font-size: 12px
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

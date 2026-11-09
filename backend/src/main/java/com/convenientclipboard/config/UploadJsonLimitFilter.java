@@ -10,19 +10,23 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.UrlPathHelper;
 
-/** Bound the public manifest before Jackson allocates lists, including requests without Content-Length. */
+/** Bound public JSON bodies before Jackson allocates content, including requests without Content-Length. */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE+11)
 public class UploadJsonLimitFilter extends OncePerRequestFilter {
     static final int MAX_BYTES=2*1024*1024;
+    static final int CLIPBOARD_MAX_BYTES=1024*1024;
     private final UrlPathHelper paths=new UrlPathHelper();
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !"POST".equals(request.getMethod()) || !"/api/uploads".equals(paths.getPathWithinApplication(request));
+        String path=paths.getPathWithinApplication(request);
+        return !"POST".equals(request.getMethod()) || !("/api/uploads".equals(path) || "/api/clipboards".equals(path));
     }
     @Override protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,FilterChain chain) throws IOException,ServletException {
-        if(request.getContentLengthLong()>MAX_BYTES) { reject(response);return; }
-        byte[] body=request.getInputStream().readNBytes(MAX_BYTES+1);
-        if(body.length>MAX_BYTES) { reject(response);return; }
+        boolean clipboard="/api/clipboards".equals(paths.getPathWithinApplication(request));
+        int limit=clipboard ? CLIPBOARD_MAX_BYTES : MAX_BYTES;
+        if(request.getContentLengthLong()>limit) { reject(response,clipboard);return; }
+        byte[] body=request.getInputStream().readNBytes(limit+1);
+        if(body.length>limit) { reject(response,clipboard);return; }
         chain.doFilter(new HttpServletRequestWrapper(request) {
             private final ByteArrayInputStream input=new ByteArrayInputStream(body);
             @Override public int getContentLength() { return body.length; }
@@ -39,8 +43,8 @@ public class UploadJsonLimitFilter extends OncePerRequestFilter {
             @Override public BufferedReader getReader() { return new BufferedReader(new InputStreamReader(getInputStream(),StandardCharsets.UTF_8)); }
         },response);
     }
-    private void reject(HttpServletResponse response) throws IOException {
+    private void reject(HttpServletResponse response,boolean clipboard) throws IOException {
         response.setStatus(413);response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"message\":\"上传文件清单超过 2 MiB 限制\"}");
+        response.getWriter().write(clipboard ? "{\"message\":\"粘贴板请求超过 1 MiB 限制\"}" : "{\"message\":\"上传文件清单超过 2 MiB 限制\"}");
     }
 }
