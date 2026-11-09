@@ -145,3 +145,19 @@ node scripts/resumable-upload-smoke.mjs
 ## 远端转存优先级回归
 
 转存候选按永久保存优先，其次临时文件到期时间从远到近；同组按上传时间从早到晚、文件ID升序排列，排序后取最多100条。`FileRepositoryOffloadTest` 使用 `TEST_POSTGRES_URL` 指定的真实PostgreSQL和连接内临时表，覆盖永久优先、临时文件剩余有效期优先、相同到期时间的稳定顺序、排除过期/远端文件，以及超过100个候选时仍优先选入永久文件。`StorageMaintenanceTest` 检查存储器失败回退与全部失败时保留本地文件。
+
+## 远端存储双向测速回归
+
+`StorageSpeedTestServiceTest` 验证异步任务、双向速率、下载内容与长度校验、失败清理、并发限制和任务隔离；控制器测试验证管理员权限、CSRF与202/404响应。前端测速回归验证启动与轮询、重复点击保护、网络故障后重读进度、失败结果、清理警告以及页面卸载后的请求取消和迟到响应隔离。
+
+隔离QA环境需启动S3Mock，并把包含标识文件的 `.local/qa-mounts/nfs`、`smb` 绑定到backend的 `/mnt/remote`。与挂载存储检查使用相同配置，执行：
+
+```sh
+node scripts/storage-speed-smoke.mjs
+```
+
+默认读取 `.local/qa.env` 并访问 `http://localhost:18088`；可使用 `SMOKE_ENV_FILE`、`SMOKE_BASE_URL`、`SMOKE_MOUNT_ROOT` 和 `SMOKE_S3_ENDPOINT` 指定独立环境、宿主挂载目录与backend可访问的S3端点。可选 `SMOKE_S3_PUBLIC_URL` 指定宿主机可访问的空S3Mock地址，进一步确认桶中没有遗留测试对象。
+
+脚本预检要求文件、存储器为空且仅有初始化管理员；创建自己的普通用户和三个停用存储器，验证HTTP鉴权、CSRF、S3/NFS/SMB双向测速、任务与存储器匹配、挂载断开失败后恢复、对象清理，以及文件数和容量计数保持不变。结束时移除自己创建的用户与存储器。NFS/SMB使用本地挂载目录模拟，验证应用适配器与清理流程，实际NAS速度需在目标网络与共享上测试。
+
+2026-11-09实际验证：前端75项测试、类型检查与生产构建通过；Java 21后端134项测试中133项通过，1项已有Windows符号链接用例按平台跳过，包含真实PostgreSQL回归。独立Compose环境完成上述HTTP检查，S3Mock桶和两个挂载目录均无遗留测速对象；浏览器验证三种存储的测速结果、运行时按钮禁用和360px窄屏无横向溢出，控制台无错误。测试环境与专用数据卷在验证后清理。

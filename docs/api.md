@@ -31,6 +31,8 @@
 | DELETE `/admin/users/{id}` | 管理员 + CSRF | 删除无文件账号，成功204 |
 | GET / POST `/admin/providers` | 管理员，POST需CSRF | 列表 / 新增存储器 |
 | PUT / DELETE `/admin/providers/{id}` | 管理员 + CSRF | 编辑 / 删除存储器 |
+| POST `/admin/providers/{id}/speed-test` | 管理员 + CSRF | 启动异步双向测速，无请求体，成功202 |
+| GET `/admin/providers/{id}/speed-test/{testId}` | 管理员 | 查询测速阶段、速率、耗时与清理警告 |
 | POST `/admin/maintenance` | 管理员 + CSRF | 提交异步到期清理和转存任务 |
 
 文件元数据包括 `id,originalName,sizeBytes,contentType,permanent,expiresAt,createdAt,location,shareUrl`。`location` 为 `LOCAL`、`S3`、`NFS` 或 `SMB`，日期使用 ISO 8601。文件分页与用户分页返回 `{items,page,size,total}`，页号从0开始、每页1–100条。兼容旧脚本，不带分页、关键词和筛选条件的 `/admin/files` 仍返回最新1000条数组；管理页面始终使用分页接口，不受该兼容接口限制。
@@ -40,6 +42,19 @@
 后台文件页提供关键词搜索与重置、存储位置和保存方式筛选，每页10/20/50/100条、首尾页与页码跳转。提交新搜索或改变每页条数时回到第一页，翻页和刷新沿用已提交的条件；删除末页最后一个文件后自动回到有效页。
 
 存储器公共字段：`name,type,enabled,priority`，`type` 为 `S3|NFS|SMB`，省略时兼容旧客户端默认为S3。S3 另传 `endpoint,region,bucket,accessKey,secretKey`；NFS / SMB 另传 `mountPath,mountId`。优先级数值越小越优先。更新时 S3 密钥留空表示不变；查询不返回凭据。挂载路径必须在配置根目录内，不允许符号链接或上级跳转，目录中的 `.clipboard-storage-id` 内容须匹配 `mountId`（1–128位字母、数字、下划线或短横线）。
+
+测速支持全部三种存储类型和已停用的配置，上传方向是服务器→远端，下载方向是远端→服务器。POST返回任务快照，GET使用相同格式：
+
+```text
+{ id, providerId, status, sampleBytes: 16777216,
+  uploadBytesPerSecond, downloadBytesPerSecond,
+  uploadDurationMillis, downloadDurationMillis,
+  startedAt, finishedAt, error, warning }
+```
+
+`status` 依次为 `PREPARING|UPLOADING|DOWNLOADING|CLEANING`，终态为 `COMPLETED|FAILED`。未得到的速率、耗时及未发生的错误/警告为`null`，时间为ISO 8601。可每秒GET查询；传输失败保留已完成方向的结果，并在清理后发布终态。上传包括现有存储适配器的连接和大小校验，下载包括流式读取与SHA-256处理；NFS/SMB可能命中系统缓存。16MiB随机样本生成与最终清理不计入传输耗时，不创建文件元数据。
+
+全局同时只运行一项测速，忙时POST返回409。创建请求不会幂等合并，客户端收到普通网络错误时不自动重复POST；GET暂时失败可使用原ID重读。任务和最近20项记录仅保存在当前后端进程内，服务重启、记录被淘汰或存储器ID不匹配时GET返回404。使用开始时的存储配置清理测试对象；失败时`warning`包含需要手动清理的远端对象UUID或服务器`speed-tests`临时文件名，连接异常详细信息及凭据不会回传。
 
 用户字段：`id,username,role,enabled,createdAt,fileCount,storageBytes`。安全信息变化使旧 JWT 失效；重置自身密码后需要重新登录。自身禁用/降级/删除、最后启用管理员被移除、删除有文件用户均返回409。
 

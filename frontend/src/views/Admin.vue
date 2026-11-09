@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import {computed, onMounted, reactive, ref} from 'vue'
+import {computed, onMounted, onUnmounted, reactive, ref} from 'vue'
 import {Check, Cloud, Database, File, HardDrive, Pencil, Plus, RefreshCw, ShieldCheck, Trash2, X} from 'lucide-vue-next'
 import {api, applyUploadLimit, saveAdminSettings, size} from '../api'
 import type {Overview, Provider, Settings} from '../types'
 import AdminFiles from '../components/AdminFiles.vue'
 import AdminUsers from '../components/AdminUsers.vue'
+import ProviderSpeedTest from '../components/ProviderSpeedTest.vue'
+import {useStorageSpeedTests} from '../useStorageSpeedTests'
 import {GIB, MIB, parseUploadLimit, uploadLimitInput} from '../uploadPolicy'
 import type {UploadSizeUnit} from '../uploadPolicy'
 
@@ -21,6 +23,8 @@ const providerOpen = ref(false);
 const editing = ref<string | null>(null);
 const deleteProvider = ref<Provider | null>(null);
 const reloadKey = ref(0)
+const speedTests = useStorageSpeedTests()
+const {states: speedTestStates, activeProviderId: speedTestProviderId, running: speedTestRunning} = speedTests
 const emptyProvider = () => ({
   name: '',
   type: 'S3' as Provider['type'],
@@ -118,6 +122,7 @@ async function saveSettings() {
 }
 
 function openProvider(provider?: Provider) {
+  if (provider?.id === speedTestProviderId.value) return;
   error.value = '';
   editing.value = provider?.id || null;
   Object.assign(form, emptyProvider(), provider ?
@@ -158,6 +163,7 @@ async function saveProvider() {
               'POST',
           body: JSON.stringify(body)
         });
+    if (editing.value) speedTests.clear(editing.value);
     providerOpen.value = false;
     form.accessKey = '';
     form.secretKey = '';
@@ -176,6 +182,7 @@ async function removeProvider() {
   error.value = '';
   try {
     await api(`/admin/providers/${deleteProvider.value.id}`, {method: 'DELETE'});
+    speedTests.clear(deleteProvider.value.id);
     deleteProvider.value = null;
     success.value = '存储器已移除';
     await load()
@@ -187,6 +194,7 @@ async function removeProvider() {
 }
 
 onMounted(load)
+onUnmounted(speedTests.dispose)
 </script>
 <template>
   <div class="page-width content-page admin-page">
@@ -327,17 +335,21 @@ onMounted(load)
                 <dd>{{ provider.priority }} <span class="muted">（数值越小越优先）</span></dd>
               </div>
             </dl>
+            <ProviderSpeedTest :state="speedTestStates[provider.id]" :active="speedTestProviderId === provider.id"
+                               :disabled="busy || speedTestRunning" @start="speedTests.start(provider.id)"
+                               @resume="speedTests.read(provider.id)"/>
             <div class="provider-actions">
-              <button class="text-button" @click="openProvider(provider)">
+              <button class="text-button" :disabled="speedTestProviderId === provider.id" @click="openProvider(provider)">
                 <Pencil :size="15"/>
                 编辑配置
               </button>
-              <button class="icon-button danger" aria-label="移除存储器" @click="deleteProvider = provider; error = ''">
+              <button class="icon-button danger" :disabled="speedTestProviderId === provider.id" aria-label="移除存储器" @click="deleteProvider = provider; error = ''">
                 <Trash2 :size="17"/>
               </button>
             </div>
           </article>
         </div>
+        <p v-if="providers.length" class="page-note">测速测量应用服务器与远端之间的实际读写速度，同时只运行一项。NFS / SMB 结果可能受系统缓存影响。</p>
         <p class="page-note">已有文件的存储器无法删除。S3 凭据加密保存；NFS / SMB
           由服务器操作系统挂载，应用不保存共享账号密码。</p>
       </template>

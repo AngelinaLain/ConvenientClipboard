@@ -53,6 +53,21 @@ export interface Provider {
     hasCredentials?: boolean
 }
 
+export interface StorageSpeedTest {
+    id: string;
+    providerId: string;
+    status: 'PREPARING' | 'UPLOADING' | 'DOWNLOADING' | 'CLEANING' | 'COMPLETED' | 'FAILED';
+    sampleBytes: number;
+    uploadBytesPerSecond: number | null;
+    downloadBytesPerSecond: number | null;
+    uploadDurationMillis: number | null;
+    downloadDurationMillis: number | null;
+    startedAt: string;
+    finishedAt: string | null;
+    error: string | null;
+    warning: string | null
+}
+
 export interface Page<T> {
     items: T[];
     page: number;

@@ -2571,6 +2571,96 @@ td {
     max-width: 320px
 }
 
+.provider-speed-test {
+    margin: 18px 0 0;
+    padding: 15px 0;
+    border-top: 1px solid #edf0e9
+}
+
+.speed-test-header,
+.speed-test-heading,
+.speed-test-results span,
+.speed-test-status {
+    display: flex;
+    align-items: center;
+    gap: 6px
+}
+
+.speed-test-header {
+    justify-content: space-between;
+    gap: 12px
+}
+
+.speed-test-heading {
+    color: #607858;
+    font-size: 12px;
+    font-weight: 600
+}
+
+.speed-test-results {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 15px 0 8px
+}
+
+.speed-test-results > div {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0
+}
+
+.speed-test-results span,
+.speed-test-results small,
+.speed-test-caption,
+.speed-test-status {
+    font-size: 10px;
+    color: #8b9b80
+}
+
+.speed-test-results strong {
+    color: #4e7145;
+    font-size: clamp(13px, 1.7vw, 18px);
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums
+}
+
+.speed-test-caption,
+.speed-test-status,
+.speed-test-error,
+.speed-test-warning {
+    margin: 8px 0 0;
+    line-height: 1.6;
+    overflow-wrap: anywhere
+}
+
+.speed-test-status {
+    flex-wrap: wrap
+}
+
+.speed-test-status .spinner {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0
+}
+
+.speed-test-error,
+.speed-test-warning {
+    font-size: 11px;
+    color: #b26c60
+}
+
+.speed-test-warning {
+    color: #95712d
+}
+
+.provider-actions button:disabled,
+.provider-speed-test button:disabled {
+    cursor: default;
+    opacity: .5
+}
+
 .upload-limit-input input {
     flex: 1;
     min-width: 0
