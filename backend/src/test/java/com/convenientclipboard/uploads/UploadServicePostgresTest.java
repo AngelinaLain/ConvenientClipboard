@@ -106,6 +106,34 @@ class UploadServicePostgresTest {
             chunk(request,index,Arrays.copyOfRange(data,index*UploadTask.CHUNK_SIZE,Math.min(data.length,(index+1)*UploadTask.CHUNK_SIZE)));
     }
 
+    @Test void distinctPartsCanWriteConcurrentlyWhileCompletionWaitsForBoth() throws Exception {
+        byte[] data=bytes(UploadTask.CHUNK_SIZE+1);
+        UploadRequest request=request(data);
+        service.create(request,TOKEN,null);
+        CountDownLatch reading=new CountDownLatch(1), release=new CountDownLatch(1);
+        InputStream slow=new ByteArrayInputStream(Arrays.copyOfRange(data,0,UploadTask.CHUNK_SIZE)) {
+            @Override public synchronized int read(byte[] buffer,int offset,int length) {
+                reading.countDown();
+                try { if(!release.await(10,TimeUnit.SECONDS)) throw new IllegalStateException("test timed out"); }
+                catch(InterruptedException ex) { Thread.currentThread().interrupt();throw new IllegalStateException(ex); }
+                return super.read(buffer,offset,length);
+            }
+        };
+        ExecutorService workers=Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first=workers.submit(() -> service.chunk(request.id(),0,TOKEN,null,slow,UploadTask.CHUNK_SIZE));
+            assertThat(reading.await(5,TimeUnit.SECONDS)).isTrue();
+            Future<?> second=workers.submit(() -> chunk(request,1,new byte[] {data[UploadTask.CHUNK_SIZE]}));
+            second.get(5,TimeUnit.SECONDS);
+            release.countDown();
+            first.get(10,TimeUnit.SECONDS);
+            assertThat(service.complete(request.id(),TOKEN,null).state()).isEqualTo("COMPLETED");
+        } finally {
+            release.countDown();
+            workers.shutdownNow();
+        }
+    }
+
     @Test void persistedAccessSwitchesBlockGuestTasksAndOlderSettingsRequestsPreserveThem() {
         byte[] data=bytes(12);
         UploadRequest request=request(data);

@@ -82,7 +82,7 @@ public class UploadService {
     }
     public UploadStatus chunk(UUID id,int index,String token,AppPrincipal principal,InputStream input,long contentLength) {
         String hash=tokenHash(token);
-        return coordinator.uploadLocked(id,() -> {
+        return coordinator.uploadChunkLocked(id,index,() -> {
             UploadTask task=access(id,hash,principal);
             requireUploadAllowed(task.ownerId(),settings.get());
             if(index<0 || index>=task.totalChunks()) throw new ApiException(HttpStatus.BAD_REQUEST,"分片序号无效");
@@ -91,7 +91,6 @@ public class UploadService {
             if(contentLength>=0 && contentLength<expected) throw new ApiException(HttpStatus.BAD_REQUEST,"分片长度与文件清单不符");
             try {
                 if(!task.completed()) {
-                    parts.clearStaging(id);
                     if(expected>local.usableBytes()) throw noSpace();
                 }
                 // Even an already received/completed chunk must match this request's actual bytes.

@@ -2,6 +2,7 @@ import {computed, markRaw, reactive, ref} from 'vue'
 import {ApiError} from './api'
 import {abortError, checkAbort, fileChunkHashes, UPLOAD_CHUNK_SIZE} from './chunkHash'
 import {createUpload, uploadRequest} from './resumableUpload'
+import {uploadMissingParts} from './uploadWebSocket'
 import type {UploadStatus} from './resumableUpload'
 import {cacheUploadFile, cachedUploadFile, deleteCachedFile, forgetUpload, saveUpload, storedUploads, UPLOAD_RESUME_WINDOW_MS} from './uploadStorage'
 import type {UploadRecord} from './uploadStorage'
@@ -244,19 +245,19 @@ export function useResumableUploads(owner: () => string | null, allowed: () => b
             if (status.state === 'COMPLETED') return
             if (status.chunkSize !== UPLOAD_CHUNK_SIZE || status.totalChunks !== record.chunkHashes.length)
                 throw new Error('服务器分片配置与此任务不一致，请重新上传')
-            for (let index = 0; index < status.totalChunks; index++) {
-                alive(item, controller, version)
-                if (status.receivedChunks.includes(index)) continue
-                requireAllowed()
+            const received = new Set(status.receivedChunks)
+            const missing = Array.from({length: status.totalChunks}, (_, index) => index).filter(index => !received.has(index))
+            if (missing.length) {
+                let uploadedBytes = status.uploadedBytes
                 item.stage = 'uploading'
-                const body = item.source!.slice(index * UPLOAD_CHUNK_SIZE, Math.min(item.size, (index + 1) * UPLOAD_CHUNK_SIZE))
-                status = await uploadRequest<UploadStatus>(record, `/chunks/${index}`, {
-                    method: 'PUT', body, headers: {'Content-Type': 'application/octet-stream'}
-                }, controller.signal, attempt => { if (!controller.signal.aborted) item.error = `网络暂时中断，正在第 ${attempt} 次重试…` })
-                alive(item, controller, version)
-                item.error = ''
-                accept(item, status)
-                if (status.state === 'COMPLETED') return
+                await uploadMissingParts(record, item.source!, UPLOAD_CHUNK_SIZE, missing, controller.signal,
+                    () => { alive(item, controller, version); requireAllowed() }, bytes => {
+                        uploadedBytes += bytes
+                        item.error = ''
+                        accept(item, {...status, uploadedBytes})
+                    }, attempt => {
+                        if (!controller.signal.aborted) item.error = `网络暂时中断，正在第 ${attempt} 次重试…`
+                    })
             }
             alive(item, controller, version)
             requireAllowed()

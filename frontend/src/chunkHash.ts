@@ -7,8 +7,11 @@ export function checkAbort(signal?: AbortSignal) {
 }
 
 export async function hashBlob(blob: Blob): Promise<string> {
-    // A pure JS digest also works on HTTP origins where crypto.subtle is unavailable.
-    const digest = sha256(new Uint8Array(await blob.arrayBuffer()))
+    const bytes = await blob.arrayBuffer()
+    // Native hashing avoids blocking the UI on secure origins; HTTP origins retain the JS fallback.
+    const digest = globalThis.crypto?.subtle
+        ? new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+        : sha256(new Uint8Array(bytes))
     return Array.from(digest, value => value.toString(16).padStart(2, '0')).join('')
 }
 

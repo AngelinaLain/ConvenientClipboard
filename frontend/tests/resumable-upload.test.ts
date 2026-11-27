@@ -10,8 +10,19 @@ import * as chunkHash from '../src/chunkHash'
 import {uploadRequest} from '../src/resumableUpload'
 
 const memory = vi.hoisted(() => ({records: new Map<string, UploadRecord>(), files: new Map<string, File>(), failSave: false}))
+const ws = vi.hoisted(() => ({part: vi.fn()}))
 vi.mock('../src/chunkHash', async original => ({...await original<typeof import('../src/chunkHash')>(), UPLOAD_CHUNK_SIZE: 4}))
 vi.mock('../src/api', async original => ({...await original<typeof import('../src/api')>(), api: vi.fn()}))
+vi.mock('../src/uploadWebSocket', () => ({uploadMissingParts: async (record: UploadRecord, source: File, chunkSize: number,
+    missing: number[], signal: AbortSignal, check: () => void, onPart: (bytes: number) => void) => {
+    await Promise.all(missing.map(async index => {
+        check()
+        const body = source.slice(index * chunkSize, Math.min(source.size, (index + 1) * chunkSize))
+        await ws.part(index, body, record, signal)
+        check()
+        onPart(body.size)
+    }))
+}}))
 vi.mock('../src/uploadStorage', () => ({
     UPLOAD_RESUME_WINDOW_MS: 10 * 60 * 1000,
     storedUploads: (owner: string | null) => [...memory.records.values()].filter(record => record.ownerId === owner).map(record => JSON.parse(JSON.stringify(record))),
@@ -32,7 +43,7 @@ async function record(id = '11111111-1111-4111-8111-111111111111', ownerId: stri
     return {version: 1, id, token: 'a'.repeat(64), ownerId, originalName: 'original.txt', contentType: 'text/plain', sizeBytes: 10, permanent: false,
         chunkHashes: await fileChunkHashes(source(), 4), createdAt: Date.now(), confirmed: true, paused: false}
 }
-beforeEach(() => { vi.resetAllMocks(); memory.records.clear(); memory.files.clear(); memory.failSave = false })
+beforeEach(() => { vi.resetAllMocks(); ws.part.mockResolvedValue(undefined); memory.records.clear(); memory.files.clear(); memory.failSave = false })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('resumable upload lifecycle', () => {
@@ -46,15 +57,15 @@ describe('resumable upload lifecycle', () => {
             expect(new Headers(options?.headers).get('X-Upload-Token')).toHaveLength(64)
             if (path === `/uploads/${item.id}`) throw new ApiError('不存在', 404)
             if (path === '/uploads') return status(item.id)
-            if (String(path).includes('/chunks/')) {
-                expect(new Headers(options?.headers).get('Content-Type')).toBe('application/octet-stream')
-                putSizes.push((options!.body as Blob).size)
-                return status(item.id, Array.from({length: putSizes.length}, (_, index) => index))
-            }
             return status(item.id, [0, 1, 2], true)
         })
+        ws.part.mockImplementation(async (_index: number, body: Blob, record: UploadRecord) => {
+            expect(record.id).toBe(item.id)
+            expect(record.token).toHaveLength(64)
+            putSizes.push(body.size)
+        })
         await list.start(item)
-        expect(putSizes).toEqual([4, 4, 2])
+        expect(putSizes.sort()).toEqual([2, 4, 4])
         expect(item.result?.id).toBe(item.id)
         expect(item.stage).toBe('done')
         expect(memory.records.get(item.id)?.file?.id).toBe(item.id)
@@ -64,15 +75,15 @@ describe('resumable upload lifecycle', () => {
         const saved = await record()
         memory.records.set(saved.id, saved)
         memory.files.set(saved.id, source())
-        const puts: string[] = []
+        const puts: number[] = []
         request.mockImplementation(async path => {
             if (String(path).endsWith('/complete')) return status(saved.id, [0, 1, 2], true)
-            if (String(path).includes('/chunks/')) { puts.push(String(path)); return status(saved.id, puts.length === 1 ? [0, 1] : [0, 1, 2]) }
             return status(saved.id, [0])
         })
+        ws.part.mockImplementation(async (index: number) => { puts.push(index) })
         const list = useResumableUploads(() => null)
         await list.restore()
-        expect(puts).toEqual([`/uploads/${saved.id}/chunks/1`, `/uploads/${saved.id}/chunks/2`])
+        expect(puts.sort()).toEqual([1, 2])
         expect(list.items.value[0]!.result?.id).toBe(saved.id)
     })
 
@@ -88,7 +99,7 @@ describe('resumable upload lifecycle', () => {
         expect(item.error).toContain('内容与原任务不一致')
         expect(item.stage).toBe('needs-file')
         expect(item.source).toBeUndefined()
-        expect(request.mock.calls.every(call => !String(call[0]).includes('/chunks/'))).toBe(true)
+        expect(ws.part).not.toHaveBeenCalled()
     })
 
     it('recovers the original share link when completion succeeded but its response was lost', async () => {
@@ -161,31 +172,30 @@ describe('resumable upload lifecycle', () => {
     it('pauses an in-flight part and ignores its late acknowledgement, then resumes the same task', async () => {
         const list = useResumableUploads(() => null)
         const item = list.add(source(), false)
-        let acknowledge!: (status: UploadStatus) => void
+        const acknowledge: Array<() => void> = []
         request.mockImplementation(async path => {
             if (path === `/uploads/${item.id}`) throw new ApiError('不存在', 404)
             if (path === '/uploads') return status(item.id)
-            return new Promise(resolve => { acknowledge = resolve })
+            return status(item.id, [0, 1, 2], true)
         })
+        ws.part.mockImplementation(() => new Promise<void>(resolve => { acknowledge.push(resolve) }))
         const first = list.start(item)
         const duplicate = list.start(item)
-        await vi.waitFor(() => expect(acknowledge).toBeTypeOf('function'))
+        await vi.waitFor(() => expect(acknowledge).toHaveLength(3))
         list.pause(item)
-        acknowledge(status(item.id, [0]))
+        acknowledge.forEach(resolve => resolve())
         await Promise.all([first, duplicate])
         expect(item.stage).toBe('paused')
         expect(item.savedBytes).toBe(0)
         expect(request.mock.calls.filter(call => call[0] === '/uploads')).toHaveLength(1)
         const missing: number[] = []
         request.mockImplementation(async path => {
-            if (String(path).includes('/chunks/')) {
-                missing.push(Number(String(path).split('/').at(-1)))
-                return status(item.id, missing.length === 1 ? [0, 1] : [0, 1, 2])
-            }
-            return status(item.id, [0, 1, 2], String(path).endsWith('/complete'))
+            return String(path).endsWith('/complete') ? status(item.id, [0, 1, 2], true) : status(item.id)
         })
+        ws.part.mockImplementation(async (index: number) => { missing.push(index) })
         await list.start(item)
         expect(item.result?.id).toBe(item.id)
+        expect(missing.sort()).toEqual([0, 1, 2])
         // Explicit resume renews the existing lease using the same persisted task id.
         const creates = request.mock.calls.filter(call => call[0] === '/uploads')
         expect(creates).toHaveLength(2)
@@ -228,10 +238,6 @@ describe('anonymous upload access settings', () => {
         request.mockImplementation(async path => {
             if (path === `/uploads/${item.id}`) throw new ApiError('不存在', 404)
             if (path === '/uploads') return status(item.id)
-            if (String(path).includes('/chunks/')) {
-                const index = Number(String(path).split('/').at(-1))
-                return status(item.id, Array.from({length: index + 1}, (_, value) => value))
-            }
             return status(item.id, [0, 1, 2], true)
         })
         allowed = true
@@ -295,19 +301,20 @@ describe('anonymous upload access settings', () => {
         expect(list.items.value[0]!.error).toBe('匿名上传已关闭，请登录后上传')
     })
 
-    it.each([0, 2])('stops before later writes when access closes after chunk %i', async closedAfter => {
+    it.each([0, 2])('does not finalize when access closes after part %i', async closedAfter => {
         let allowed = true
         const list = useResumableUploads(() => null, () => allowed)
         const item = list.add(source(), false)
         request.mockImplementation(async path => {
             if (path === `/uploads/${item.id}`) throw new ApiError('不存在', 404)
             if (path === '/uploads') return status(item.id)
-            const index = Number(String(path).split('/').at(-1))
+            return status(item.id, [0, 1, 2], true)
+        })
+        ws.part.mockImplementation(async (index: number) => {
             if (index === closedAfter) allowed = false
-            return status(item.id, Array.from({length: index + 1}, (_, value) => value))
         })
         await list.start(item)
-        expect(request.mock.calls.filter(call => call[1]?.method === 'PUT')).toHaveLength(closedAfter + 1)
+        expect(ws.part).toHaveBeenCalledTimes(closedAfter + 1)
         expect(request.mock.calls.some(call => String(call[0]).endsWith('/complete'))).toBe(false)
         expect(item.error).toBe('匿名上传已关闭，请登录后上传')
         expect(item.stage).toBe('error')
@@ -322,10 +329,6 @@ describe('anonymous upload access settings', () => {
         const anonymousUploads = false
         request.mockImplementation(async path => {
             if (String(path).endsWith('/complete')) return status(saved.id, [0, 1, 2], true)
-            if (String(path).includes('/chunks/')) {
-                const index = Number(String(path).split('/').at(-1))
-                return status(saved.id, Array.from({length: index + 1}, (_, value) => value))
-            }
             return status(saved.id, [0])
         })
         const list = useResumableUploads(() => owner, () => !!owner || anonymousUploads)
@@ -376,10 +379,6 @@ describe('ten-minute interruption recovery and local cache release', () => {
         request.mockImplementation(async path => {
             if (path === '/uploads') { created = true; return status(saved.id) }
             if (path === `/uploads/${saved.id}` && !created) throw new ApiError('未创建', 404)
-            if (String(path).includes('/chunks/')) {
-                const last = Number(String(path).split('/').at(-1))
-                return status(saved.id, Array.from({length: last + 1}, (_, index) => index))
-            }
             return status(saved.id, [0, 1, 2], String(path).endsWith('/complete'))
         })
         const list = useResumableUploads(() => null)
@@ -462,8 +461,9 @@ describe('ten-minute interruption recovery and local cache release', () => {
         request.mockImplementation(async path => {
             if (path === `/uploads/${item.id}`) throw new ApiError('未创建', 404)
             if (path === '/uploads') return status(item.id)
-            throw new ApiError('过期', 410)
+            return status(item.id)
         })
+        ws.part.mockRejectedValue(new ApiError('过期', 410))
         await list.start(item)
         expect(list.items.value).toEqual([])
         memory.files.set(item.id, source())
@@ -540,9 +540,9 @@ describe('ten-minute interruption recovery and local cache release', () => {
         memory.records.set(saved.id, saved)
         memory.files.set(saved.id, source())
         request.mockImplementation(async path => {
-            if (String(path).includes('/chunks/')) throw new ApiError('分片校验失败，请选择原文件', 422)
             return status(saved.id, [0])
         })
+        ws.part.mockRejectedValue(new ApiError('分片校验失败，请选择原文件', 422))
         const list = useResumableUploads(() => null)
         await list.restore()
         const item = list.items.value[0]!

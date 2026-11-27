@@ -42,6 +42,7 @@ class UploadAccessPolicyTest {
     @BeforeEach void setup() {
         when(coordinator.locked(any())).thenAnswer(invocation -> invocation.<Supplier<?>>getArgument(0).get());
         when(coordinator.uploadLocked(any(), any())).thenAnswer(invocation -> invocation.<Supplier<?>>getArgument(1).get());
+        when(coordinator.uploadChunkLocked(any(), anyInt(), any())).thenAnswer(invocation -> invocation.<Supplier<?>>getArgument(2).get());
         when(coordinator.renewUpload(any(), any())).thenReturn(true);
         when(local.usableBytes()).thenReturn(16 * MIB);
         when(settings.get()).thenReturn(new StorageSettings(16 * MIB, 50, MIB, false, true));

@@ -19,6 +19,8 @@ import javax.sql.DataSource;
 /** Serializes quota, migration and deletion changes, including against scheduled maintenance. */
 @Component
 public class StorageCoordinator {
+    private static final int UPLOAD_LOCK_NAMESPACE = 787459133;
+    private static final int UPLOAD_PART_LOCK_NAMESPACE = 787459134;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
     private final JdbcTemplate leaseJdbc;
@@ -55,7 +57,15 @@ public class StorageCoordinator {
     public <T> T uploadLocked(UUID id, Supplier<T> operation) {
         return transactions.execute(status -> {
             // The two-int advisory namespace cannot collide with the existing bigint capacity lock.
-            jdbc.queryForObject("select pg_advisory_xact_lock(?,?)", Object.class, 787459133, id.hashCode());
+            jdbc.queryForObject("select pg_advisory_xact_lock(?,?)", Object.class, UPLOAD_LOCK_NAMESPACE, id.hashCode());
+            return operation.get();
+        });
+    }
+    /** Different parts share the task lock; completion and cancellation take it exclusively. */
+    public <T> T uploadChunkLocked(UUID id, int index, Supplier<T> operation) {
+        return transactions.execute(status -> {
+            jdbc.queryForObject("select pg_advisory_xact_lock_shared(?,?)", Object.class, UPLOAD_LOCK_NAMESPACE, id.hashCode());
+            jdbc.queryForObject("select pg_advisory_xact_lock(?,?)", Object.class, UPLOAD_PART_LOCK_NAMESPACE, 31 * id.hashCode() + index);
             return operation.get();
         });
     }

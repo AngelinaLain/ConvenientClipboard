@@ -141,6 +141,10 @@ node scripts/admin-files-smoke.mjs
 
 ## 分片上传与恢复回归
 
+当前浏览器上传分片经WebSocket长连接传输，最多四个并发工作连接；REST仍负责创建、查询、完成和取消。前端回归测试覆盖并发缺片发送、暂停后忽略迟到确认及分片校验错误。后端 `UploadWebSocketHandlerTest` 覆盖首帧认证、二进制序号、未认证拒绝及校验错误；有 `TEST_POSTGRES_URL` 时，`UploadServicePostgresTest` 还验证不同分片可同时写入并最终合并。旧HTTP分片冒烟脚本继续验证兼容接口，不能代替WebSocket端到端检查。
+
+在全新独立QA环境中用 `SMOKE_WS_QA=1 node scripts/websocket-upload-smoke.mjs` 检查Nginx升级、连接重建、服务端续传进度及下载SHA-256。PowerShell中先执行 `$env:SMOKE_WS_QA='1'`。脚本只允许空文件库，清理自己上传的文件；默认连接 `http://localhost:18088`，可用 `SMOKE_BASE_URL` 指定专用QA端口。
+
 前端 `npm test` 覆盖逐片SHA-256、刷新后缓存文件恢复、缓存缺失后的原文件重选与内容检查、只补缺片、暂停和迟到响应、身份切换、有限重试、完成响应丢失与取消/完成交错。相同已完成任务重复启动不会创建文件，明确重新选择一个已完成文件则创建新任务，以便重新上传到期或已删除的文件。
 
 后端 `UploadServicePostgresTest` 使用 `TEST_POSTGRES_URL` 指定的真实PostgreSQL，建立独立临时schema、执行全部Flyway迁移并测试文件系统和数据库协作。覆盖原子分片发布后无数据库receipt的恢复、重启续传、并发完成、失败事务与孤立对象恢复、所有者与令牌、取消/过期记录、配额预留、分片破损、文件ID碰撞和动态降限。`UploadControllerTest` 与 `UploadJsonLimitFilterTest` 另外覆盖参数、缺请求头和清单体积限制（含编码路径和无Content-Length）；安全契约检查游客任务可访问、写入仍需CSRF且管理路径仍受保护。
