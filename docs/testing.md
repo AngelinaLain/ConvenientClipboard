@@ -141,7 +141,7 @@ node scripts/admin-files-smoke.mjs
 
 ## 分片上传与恢复回归
 
-当前浏览器上传分片经WebSocket长连接传输，最多四个并发工作连接；REST仍负责创建、查询、完成和取消。前端回归测试覆盖并发缺片发送、暂停后忽略迟到确认及分片校验错误。后端 `UploadWebSocketHandlerTest` 覆盖首帧认证、二进制序号、未认证拒绝及校验错误；有 `TEST_POSTGRES_URL` 时，`UploadServicePostgresTest` 还验证不同分片可同时写入并最终合并。旧HTTP分片冒烟脚本继续验证兼容接口，不能代替WebSocket端到端检查。
+大文件上传前的SHA-256清单由最多四个Web Worker并行计算，每个线程一次只读取一个8MiB分片，结果按分片序号排序；前端测试覆盖乱序完成、并发上限和暂停清理。当前浏览器上传分片经WebSocket长连接传输，最多四个并发工作连接；REST仍负责创建、查询、完成和取消。前端回归测试覆盖并发缺片发送、暂停后忽略迟到确认及分片校验错误。后端 `UploadWebSocketHandlerTest` 覆盖首帧认证、二进制序号、未认证拒绝及校验错误；有 `TEST_POSTGRES_URL` 时，`UploadServicePostgresTest` 还验证不同分片可同时写入并最终合并。旧HTTP分片冒烟脚本继续验证兼容接口，不能代替WebSocket端到端检查。
 
 在全新独立QA环境中用 `SMOKE_WS_QA=1 node scripts/websocket-upload-smoke.mjs` 检查携带浏览器 `Origin` 的Nginx升级、连接重建、服务端续传进度及下载SHA-256。测试端口应与容器内部的80端口不同，以覆盖反向代理转发公网端口的同源检查。PowerShell中先执行 `$env:SMOKE_WS_QA='1'`。脚本只允许空文件库，清理自己上传的文件；默认连接 `http://localhost:18088`，可用 `SMOKE_BASE_URL` 指定专用QA端口。
 
