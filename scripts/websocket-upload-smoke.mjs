@@ -2,6 +2,8 @@
 import assert from 'node:assert/strict';
 import {createHash, randomBytes, randomUUID} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
+import http from 'node:http';
+import https from 'node:https';
 
 assert.equal(process.env.SMOKE_WS_QA, '1', 'Set SMOKE_WS_QA=1 for an isolated QA deployment');
 const base = (process.env.SMOKE_BASE_URL || 'http://localhost:18088').replace(/\/$/, '');
@@ -41,6 +43,31 @@ const overview = await (await admin.request('/admin/overview')).json();
 assert.equal(overview.totalFiles, 0, 'Use a fresh empty QA deployment');
 const created = await guest.mutate('/uploads', 'POST', manifest, {'X-Upload-Token': token});
 assert.equal(created.status, 200, await created.text());
+
+async function browserHandshake() {
+  const url = new URL('/api/upload-stream', base);
+  const transport = url.protocol === 'https:' ? https : http;
+  await new Promise((resolve, reject) => {
+    const request = transport.request(url, {headers: {
+      Origin: new URL(base).origin,
+      Connection: 'Upgrade',
+      Upgrade: 'websocket',
+      'Sec-WebSocket-Version': '13',
+      'Sec-WebSocket-Key': randomBytes(16).toString('base64')
+    }});
+    request.setTimeout(10000, () => request.destroy(new Error('Browser-style WebSocket handshake timed out')));
+    request.on('upgrade', (response, socket) => {
+      socket.destroy();
+      response.statusCode === 101 ? resolve() : reject(new Error(`Handshake returned ${response.statusCode}`));
+    });
+    request.on('response', response => {
+      response.resume();
+      reject(new Error(`Browser-style WebSocket handshake returned ${response.statusCode}`));
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
 
 async function connection() {
   const url = base.replace(/^http/, 'ws') + '/api/upload-stream';
@@ -82,6 +109,7 @@ async function part(socket, index) {
 }
 let fileId;
 try {
+  await browserHandshake();
   const [first, second] = await Promise.all([connection(), connection()]);
   await Promise.all([part(first, 0), part(second, 1)]);
   first.close(); second.close();
